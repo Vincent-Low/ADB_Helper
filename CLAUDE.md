@@ -2,14 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Architecture invariants — NEVER violate these
+
+These rules are load-bearing. Any change that breaks one of them is wrong even if it compiles and passes tests.
+
+1. **ADB I/O isolation.** No module, widget, or helper may call `subprocess`, `QProcess`, or any shell against the `adb` binary directly. All ADB traffic — one-shot commands, long-lived processes, and device monitoring — goes through `src/adb_helper/core/adb_service.py`. The service exposes Qt signals; the UI subscribes. Grep for `"adb"` in any non-core file should return zero command-construction sites.
+2. **IModule contract.** Every screen in `src/adb_helper/modules/` is a `QWidget` subclass that also implements `IModule` from `core/imodule.py`: `on_activate()`, `on_deactivate()`, `on_device_changed(ctx: DeviceContext)`, `on_device_disconnected()`. Modules are discovered via `core/registry.py`; sidebar order and labels are read from the registry, never hard-coded.
+3. **Strings centralised.** All user-facing strings (button labels, dialog text, status messages, error translations, tooltips) live in `src/adb_helper/core/strings.py`. No string literals in widgets. This keeps the UI i18n-ready even though v1.0 is English-only.
+4. **Platform shims only in `core/platform.py`.** Anything that branches on Windows vs Linux — paths, ConPTY vs `pty`, named-pipe vs UDS, lock acquisition, theme polling — lives in `core/platform.py`. Modules and the UI must not contain `if sys.platform == ...` checks.
+5. **§9 Out of Scope is binding.** No code, UI element, menu item, setting, or string may exist for: root-required ops, GUI-action macro recording, streaming logcat, file push/pull manager, screen recording, macOS, multi-device macro playback, `.aab` install, app-icon extraction, auto-reconnect of paired Wi-Fi devices. If a feature request leans on any of these, push back before writing code.
+
 ## Repository state
 
-This repo is **pre-implementation**. There is no Python source code, build system, or test suite yet — only:
+The scaffold exists: `src/adb_helper/{core,modules,ui}`, `db/migrations/`, `assets/fonts/`, `tests/`, `main.py`, `pyproject.toml`. Module files are stubs — every module's `QWidget` body is `pass`. No real ADB calls are wired up yet. The technical spec and design handoff (see below) are the source of truth for what each stub becomes.
 
 - `ADB_Helper_Technical_Specification.md` — the full functional/technical spec for the application to be built.
 - `adb-helper_handoff_Claude_Design/project/` — an HTML/CSS/JS design prototype exported from Claude Design. It is a visual reference, **not** the target implementation.
+- `src/adb_helper/ui/DESIGN_TOKENS.md` — extracted design tokens (colours, spacing, typography) for QSS generation.
 
-There are no build, lint, or test commands to run. Do not invent commands the user has not authorised.
+There are no build, lint, or test commands wired up yet. Do not invent commands the user has not authorised.
 
 ## What is being built
 

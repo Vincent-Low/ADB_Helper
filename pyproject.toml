@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adb_helper"
+version = "0.1.0"
+description = "Desktop GUI for managing Android devices over ADB (single-developer tool)."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "ADB_Helper" }]
+license = { text = "Proprietary" }
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: X11 Applications :: Qt",
+    "Private :: Do Not Upload",
+]
+
+dependencies = [
+    "PySide6>=6.7,<7",
+    "darkdetect>=0.8,<1",
+]
+
+[project.optional-dependencies]
+build = [
+    "pyinstaller>=6.0,<7",
+]
+dev = [
+    "pytest>=8.0,<9",
+]
+
+[project.scripts]
+adb-helper = "adb_helper.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"adb_helper" = ["ui/*.qss", "ui/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
