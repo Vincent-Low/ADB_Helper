@@ -11,9 +11,10 @@ from typing import Optional
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import QLabel, QStatusBar, QWidget
 
+from ..core import strings
 from ..core.device_context import DeviceContext
 
-NO_DEVICE_TEXT = "No device selected"
+NO_DEVICE_TEXT = strings.STATUS_NO_DEVICE
 MESSAGE_TIMEOUT_MS = 4000
 
 

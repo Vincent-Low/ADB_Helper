@@ -363,8 +363,57 @@ LOG_BTN_SHOW_DETAILS: Final = "Show Details"
 LOG_BTN_HIDE_DETAILS: Final = "Hide Details"
 LOG_BTN_CLOSE: Final = "Close"
 
+# --- Installer module (Spec §3.3) ----------------------------------------
+INSTALLER_LABEL_FILES: Final = "Files to install"
+INSTALLER_LABEL_DEVICES: Final = "Target devices"
+INSTALLER_LABEL_RESULTS: Final = "Results"
+INSTALLER_BTN_ADD_FILES: Final = "Add Files"
+INSTALLER_BTN_REMOVE: Final = "Remove"
+INSTALLER_BTN_CLEAR: Final = "Clear"
+INSTALLER_BTN_INSTALL: Final = "Install"
+INSTALLER_BTN_CANCEL: Final = "Cancel"
+INSTALLER_BTN_SHOW_DETAILS: Final = "Show Details"
+INSTALLER_BTN_HIDE_DETAILS: Final = "Hide Details"
+INSTALLER_BTN_CLOSE: Final = "Close"
+INSTALLER_FILTER_PACKAGES: Final = (
+    "Android Packages (*.apk *.apks *.xapk *.apkm);;All Files (*)"
+)
+INSTALLER_TITLE_ADD: Final = "Select files to install"
+INSTALLER_TITLE_SUMMARY: Final = "Installation Summary"
+INSTALLER_COL_FILE: Final = "File"
+INSTALLER_COL_TYPE: Final = "Type"
+INSTALLER_COL_SIZE: Final = "Size"
+INSTALLER_COL_SERIAL: Final = "Serial"
+INSTALLER_COL_MODEL: Final = "Model"
+INSTALLER_COL_RESULT: Final = "Result"
+INSTALLER_RESULT_OK: Final = "Success"
+INSTALLER_RESULT_FAIL: Final = "Failed"
+INSTALLER_RESULT_SKIPPED: Final = "Skipped (device disconnected)"
+INSTALLER_RESULT_PENDING: Final = "Pending"
+INSTALLER_RESULT_RUNNING: Final = "Installing…"
+INSTALLER_MSG_NO_FILES: Final = "Add at least one file to install."
+INSTALLER_MSG_NO_DEVICES: Final = "Select at least one device."
+INSTALLER_MSG_NO_CONNECTED: Final = "No connected devices."
+INSTALLER_MSG_RUNNING: Final = "Installing {file} on {device}…"
+INSTALLER_MSG_DONE: Final = "Done. {ok} succeeded, {fail} failed."
+INSTALLER_MSG_AAB_UNSUPPORTED: Final = (
+    "Android App Bundle (.aab) is not supported — requires the developer "
+    "signing key."
+)
+INSTALLER_MSG_BUNDLETOOL_MISSING: Final = (
+    "bundletool.jar is not installed. Open Settings → Installed "
+    "Dependencies and download bundletool."
+)
+INSTALLER_MSG_JRE_MISSING: Final = (
+    "Java runtime not found on PATH. Install JRE 17 to install .apks files."
+)
+INSTALLER_MSG_UNSUPPORTED_FORMAT: Final = "Unsupported file format: {ext}"
+
+# --- Status bar ------------------------------------------------------------
+STATUS_NO_DEVICE: Final = "No device selected"
+
 # --- Settings module (Spec §3.9) -------------------------------------------
-APP_VERSION: Final = "0.1.0"
+APP_VERSION: Final = "1.0.0"
 SETT_SEC_ABOUT: Final = "About"
 SETT_SEC_DEPS: Final = "Installed Dependencies"
 SETT_SEC_GENERAL: Final = "General Settings"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "adb-helper"
-version = "1.1.0"
+version = "1.0.0"
 description = "Desktop GUI for managing Android devices over ADB (single-developer tool)."
 readme = "README.md"
 requires-python = ">=3.12"
