@@ -1,19 +1,40 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.venv
-.idea/
-.vscode/
 *.egg-info/
-dist/
-build/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# PyInstaller
+dist/
+build/
+
+# OS
 .DS_Store
-*.log
+
+# Project-specific: runtime data (never commit)
+*.db
+logs/
+screenshots/
+logcat/
+platform-tools/
+scrcpy/
+bundletool/
+
+# Archives
 ADB_Helper-handoff_Claude_Design.zip
