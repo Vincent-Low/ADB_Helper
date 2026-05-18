@@ -1,6 +1,7 @@
 """Core data models shared across the ADB service and the UI.
 
-Stub — fields will be populated as the ADB service is implemented.
+``DeviceContext`` lives in :mod:`adb_helper.core.device_context`; re-exported
+here so legacy imports ``from ..core.models import DeviceContext`` keep working.
 """
 from __future__ import annotations
 
@@ -8,34 +9,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from .device_context import ConnectionType, DeviceContext, DeviceStatus
 
-class ConnectionType(str, Enum):
-    USB = "usb"
-    WIFI = "wifi"
-    UNKNOWN = "unknown"
-
-
-class DeviceStatus(str, Enum):
-    ONLINE = "online"
-    OFFLINE = "offline"
-    UNAUTHORIZED = "unauthorized"
-
-
-@dataclass(frozen=True)
-class DeviceContext:
-    """Snapshot of a device passed to modules via ``IModule.on_device_changed``.
-
-    Spec §5.3.
-    """
-
-    serial: str
-    model: str = ""
-    manufacturer: str = ""
-    sdk_version: int = 0
-    abi: str = ""
-    connection_type: ConnectionType = ConnectionType.UNKNOWN
-    status: DeviceStatus = DeviceStatus.OFFLINE
-    ip_address: Optional[str] = None
+__all__ = [
+    "ConnectionType",
+    "DeviceContext",
+    "DeviceStatus",
+    "CommandPriority",
+    "CommandStatus",
+    "CommandResult",
+]
 
 
 class CommandPriority(str, Enum):

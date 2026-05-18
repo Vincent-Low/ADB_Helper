@@ -1,36 +1,40 @@
-"""IModule interface — every sidebar screen implements this.
+"""IModule contract — every sidebar screen implements this.
 
-Spec §8. Module widgets are ``QWidget`` subclasses that also implement these
-four methods. Concrete imports of ``QWidget`` are deferred so this module can
-be imported without PySide6 in lightweight contexts (tests, doc tooling).
+Spec §8 / CLAUDE.md invariant 2. ``QWidget`` is a real Qt metaclass so we
+can't compose it with ``abc.ABCMeta``; instead the four lifecycle methods
+raise ``NotImplementedError`` unless overridden. Subclasses MUST override
+all four.
 """
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
 
-from .models import DeviceContext
+from PySide6.QtWidgets import QWidget
+
+from .device_context import DeviceContext
 
 
-@runtime_checkable
-class IModule(Protocol):
-    """Lifecycle hooks invoked by the module host (main window)."""
+class IModule(QWidget):
+    """Abstract lifecycle interface for sidebar modules."""
 
     def on_activate(self) -> None:
-        """Called when the module becomes visible in the main content area."""
-        ...
+        raise NotImplementedError
 
     def on_deactivate(self) -> None:
-        """Called when another module is about to take over."""
-        ...
+        raise NotImplementedError
 
-    def on_device_changed(self, ctx: DeviceContext) -> None:
-        """Called when the global active device changes.
-
-        Installer ignores this and maintains its own multi-device checklist
-        (§3.3 / CLAUDE.md invariant 3).
-        """
-        ...
+    def on_device_changed(self, ctx: DeviceContext | None) -> None:
+        raise NotImplementedError
 
     def on_device_disconnected(self) -> None:
-        """Called when the global active device disconnects (§3.1.1)."""
-        ...
+        raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class ModuleDescriptor:
+    """Sidebar entry: stable id, label, icon, and widget class."""
+
+    id: str
+    label: str
+    icon_name: str
+    widget_class: type[IModule]
