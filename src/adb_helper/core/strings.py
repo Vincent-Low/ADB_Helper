@@ -233,3 +233,78 @@ SCRCPY_ORIENT_0: Final = "0°"
 SCRCPY_ORIENT_90: Final = "90°"
 SCRCPY_ORIENT_180: Final = "180°"
 SCRCPY_ORIENT_270: Final = "270°"
+
+# --- Device Info module (Spec §3.6) --------------------------------------
+DI_BTN_REFRESH: Final = "Refresh"
+DI_BTN_EXPORT: Final = "Export to TXT"
+DI_TITLE_EXPORT: Final = "Export Device Info"
+DI_FILTER_TXT: Final = "Text Files (*.txt)"
+
+DI_SEC_DEVICE: Final = "Device"
+DI_SEC_SYSTEM: Final = "System"
+DI_SEC_CPU: Final = "CPU"
+DI_SEC_GPU: Final = "GPU"
+DI_SEC_MEMORY: Final = "Memory"
+DI_SEC_STORAGE: Final = "Storage"
+DI_SEC_DISPLAY: Final = "Display"
+DI_SEC_BATTERY: Final = "Battery"
+DI_SEC_NETWORK: Final = "Network"
+DI_SEC_LOCALE: Final = "Locale & Time"
+
+DI_FIELD_MANUFACTURER: Final = "Manufacturer"
+DI_FIELD_MODEL: Final = "Model"
+DI_FIELD_CODENAME: Final = "Device codename"
+DI_FIELD_BRAND: Final = "Brand"
+DI_FIELD_SERIAL: Final = "Serial number"
+
+DI_FIELD_ANDROID_VERSION: Final = "Android version"
+DI_FIELD_API_LEVEL: Final = "API level"
+DI_FIELD_SECURITY_PATCH: Final = "Security patch level"
+DI_FIELD_BUILD_NUMBER: Final = "Build number"
+DI_FIELD_BUILD_FINGERPRINT: Final = "Build fingerprint"
+DI_FIELD_BUILD_TYPE: Final = "Build type"
+DI_FIELD_BUILD_DATE: Final = "Build date"
+DI_FIELD_BOOTLOADER: Final = "Bootloader version"
+DI_FIELD_BASEBAND: Final = "Baseband / Radio"
+
+DI_FIELD_CPU_HARDWARE: Final = "CPU hardware name"
+DI_FIELD_CPU_MODEL: Final = "CPU model name"
+DI_FIELD_CPU_ARCH: Final = "CPU architecture"
+DI_FIELD_CPU_CORES: Final = "Number of cores"
+DI_FIELD_CPU_GOVERNOR: Final = "CPU governor"
+DI_FIELD_CPU_FREQ: Final = "Min / Max CPU frequency"
+
+DI_FIELD_GPU_VENDOR: Final = "GPU vendor"
+DI_FIELD_GPU_RENDERER: Final = "GPU renderer"
+DI_FIELD_OPENGL_VERSION: Final = "OpenGL ES version"
+
+DI_FIELD_RAM_TOTAL: Final = "Total RAM"
+DI_FIELD_RAM_AVAILABLE: Final = "Available RAM"
+DI_FIELD_SWAP_TOTAL: Final = "Total swap"
+
+DI_FIELD_STORAGE_TOTAL: Final = "Total internal storage"
+DI_FIELD_STORAGE_AVAILABLE: Final = "Available internal storage"
+
+DI_FIELD_RESOLUTION: Final = "Resolution (px)"
+DI_FIELD_DENSITY: Final = "Density (dpi)"
+DI_FIELD_REFRESH_RATE: Final = "Refresh rate"
+
+DI_FIELD_BATTERY_LEVEL: Final = "Level (%)"
+DI_FIELD_BATTERY_STATUS: Final = "Status"
+DI_FIELD_BATTERY_HEALTH: Final = "Health"
+DI_FIELD_BATTERY_TEMP: Final = "Temperature (°C)"
+DI_FIELD_BATTERY_TECH: Final = "Technology"
+DI_FIELD_BATTERY_VOLTAGE: Final = "Voltage (mV)"
+
+DI_FIELD_WIFI_IP: Final = "Wi-Fi IP address"
+DI_FIELD_WIFI_MAC: Final = "Wi-Fi MAC address"
+DI_FIELD_BT_MAC: Final = "Bluetooth MAC"
+DI_FIELD_IMEI: Final = "IMEI (SIM 1 / SIM 2)"
+
+DI_FIELD_LANGUAGE: Final = "Language"
+DI_FIELD_TIMEZONE: Final = "Timezone"
+
+DI_TOOLTIP_IMEI: Final = (
+    "IMEI requires privileged permissions on Android 10+. "
+    "This is expected behaviour."
+)
