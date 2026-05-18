@@ -21,6 +21,13 @@ _log = get_logger(__name__)
 _QSS_DIR = Path(__file__).resolve().parent / "qss"
 _POLL_MS = 30_000
 
+_tm_instance: Optional["ThemeManager"] = None
+
+
+def get_theme_manager() -> Optional["ThemeManager"]:
+    """Return the application-wide ThemeManager (registered on first construction)."""
+    return _tm_instance
+
 
 class Theme(str, Enum):
     SYSTEM = "system"
@@ -35,6 +42,8 @@ class ThemeManager(QObject):
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
+        global _tm_instance
+        _tm_instance = self
         self._app: Optional[QApplication] = None
         self._theme: Theme = Theme.SYSTEM
         self._effective: Theme = Theme.DARK
@@ -111,4 +120,4 @@ class ThemeManager(QObject):
             self.theme_changed.emit(detected)
 
 
-__all__ = ["Theme", "ThemeManager"]
+__all__ = ["Theme", "ThemeManager", "get_theme_manager"]
