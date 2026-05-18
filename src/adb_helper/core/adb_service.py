@@ -11,7 +11,7 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from .command_runner import AdbCommand, CommandRunner, Priority
+from .command_runner import AdbCommand, CommandRunner, Priority, resolve_adb_binary
 from .device_context import DeviceContext
 from .device_monitor import DeviceMonitor
 from .logger import get_logger
@@ -75,6 +75,36 @@ class AdbService(QObject):
             int(timeout),
             Priority.HIGH,
         )
+
+    def spawn_adb(
+        self,
+        process_id: str,
+        serial: Optional[str],
+        args: list,
+        env: Optional[dict] = None,
+    ) -> bool:
+        """Spawn a managed ``adb`` subprocess via :class:`ProcessManager`.
+
+        Stdout streams as raw bytes through ``processes.processOutput``;
+        completion via ``processes.processStopped``. Use this for commands
+        whose output is binary (e.g., ``exec-out screencap -p``) or
+        long-lived.
+        """
+        adb = resolve_adb_binary()
+        argv = [adb]
+        if serial:
+            argv += ["-s", serial]
+        argv += list(args)
+        return self.processes.start(process_id, argv, env=env)
+
+    def spawn_process(
+        self,
+        process_id: str,
+        argv: list,
+        env: Optional[dict] = None,
+    ) -> bool:
+        """Spawn a managed non-ADB subprocess (e.g., scrcpy) via ProcessManager."""
+        return self.processes.start(process_id, list(argv), env=env)
 
     # --- active device --------------------------------------------------
     @property
