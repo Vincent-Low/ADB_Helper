@@ -87,3 +87,44 @@ IMEI_UNAVAILABLE_NOTE: Final = (
 
 # Redaction placeholder for `adb pair` PIN codes (CLAUDE.md §7).
 PIN_REDACTED: Final = "*****"
+
+# --- Connections module (Spec §3.1) ---------------------------------------
+LABEL_CONNECTED_DEVICES: Final = "Connected Devices"
+LABEL_PAIRED_DEVICES: Final = "Paired Devices"
+LABEL_WIFI_CLASSIC: Final = "Wi-Fi Connection (legacy)"
+LABEL_WIFI_PAIRING: Final = "Wi-Fi Pairing (Android 11+)"
+
+COL_SERIAL: Final = "Serial"
+COL_IP_ADDRESS: Final = "IP Address"
+COL_MODEL: Final = "Model"
+COL_STATUS: Final = "Status"
+COL_ALIAS: Final = "Alias"
+COL_LAST_CONNECTED: Final = "Last Connected"
+
+FIELD_IP_ADDRESS: Final = "IP Address:"
+FIELD_PORT: Final = "Port:"
+FIELD_PAIRING_PORT: Final = "Pairing Port:"
+FIELD_PIN: Final = "PIN:"
+
+HINT_IP_ADDRESS: Final = "192.168.1.10"
+HINT_PIN: Final = "6-digit code"
+
+BTN_CONNECT: Final = "Connect"
+BTN_DISCONNECT: Final = "Disconnect"
+BTN_PAIR: Final = "Pair"
+BTN_FORGET: Final = "Forget"
+
+TITLE_UNAUTHORIZED_DIALOG: Final = "Unauthorized Device"
+ICON_UNAUTHORIZED: Final = "ⓘ"
+
+MSG_CONNECTING: Final = "Connecting…"
+MSG_PAIRING: Final = "Pairing…"
+MSG_CONNECT_OK: Final = "Connected to {target}."
+MSG_CONNECT_FAIL: Final = "Connect failed: {error}"
+MSG_PAIR_OK: Final = "Pairing succeeded. Connecting to {ip}…"
+MSG_PAIR_FAIL: Final = "Pairing failed: {error}"
+MSG_DISCONNECT_OK: Final = "Disconnected {serial}."
+MSG_DISCONNECT_FAIL: Final = "Disconnect failed: {error}"
+MSG_INVALID_IP: Final = "Enter a valid IP address."
+MSG_INVALID_PIN: Final = "Enter the 6-digit pairing code."
+ALIAS_DEFAULT: Final = "Wi-Fi Device"

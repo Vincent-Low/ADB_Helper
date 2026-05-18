@@ -98,13 +98,47 @@ class DatabaseManager:
         raise NotImplementedError
 
     def get_paired_devices(self) -> List[Any]:
-        raise NotImplementedError
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT ip, alias, last_connected FROM paired_devices "
+                "ORDER BY (last_connected IS NULL), last_connected DESC, ip"
+            )
+            rows = cur.fetchall()
+        return [
+            {"ip": r[0], "alias": r[1], "last_connected": r[2]}
+            for r in rows
+        ]
 
     def save_paired_device(self, ip: str, alias: str) -> None:
-        raise NotImplementedError
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO paired_devices(ip, alias, last_connected) "
+                "VALUES(?, ?, NULL) "
+                "ON CONFLICT(ip) DO UPDATE SET alias=excluded.alias",
+                (ip, alias),
+            )
 
     def delete_paired_device(self, ip: str) -> None:
-        raise NotImplementedError
+        with self._lock, self._conn:
+            self._conn.execute(
+                "DELETE FROM paired_devices WHERE ip=?",
+                (ip,),
+            )
+
+    def update_paired_alias(self, ip: str, alias: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE paired_devices SET alias=? WHERE ip=?",
+                (alias, ip),
+            )
+
+    def touch_paired_device(self, ip: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE paired_devices SET last_connected=CURRENT_TIMESTAMP "
+                "WHERE ip=?",
+                (ip,),
+            )
 
     def close(self) -> None:
         with self._lock:
