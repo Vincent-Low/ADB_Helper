@@ -1,103 +1,121 @@
-"""ADB Service layer — the ONLY module that talks to ``adb``.
+"""ADB Service facade.
 
-CLAUDE.md invariant 1. Spec §5.
-
-Three responsibilities live here:
-
-* :class:`CommandRunner` — thread-pooled one-shot commands with timeout and
-  Normal/High priority (§5.1).
-* :class:`ProcessManager` — long-lived processes: terminal PTY, scrcpy,
-  logcat export (§5.2).
-* :class:`DeviceMonitor` — primary ``adb track-devices``, fallback ``adb
-  devices`` polled every 3 s (§5.3).
-
-All three expose Qt signals so the UI subscribes instead of polling. A single
-:class:`AdbService` singleton wires them together and is the only object
-modules import. The error parser that translates known ADB strings into
-English user-facing messages also lives here.
-
-Stub: class skeletons and signatures only.
+Spec §5. Singleton owning :class:`CommandRunner`, :class:`ProcessManager`,
+and :class:`DeviceMonitor`. CLAUDE.md invariant 1: the only entry point for
+ADB I/O. Modules import :func:`get_adb_service` — never instantiate the
+sub-components directly.
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from .models import CommandPriority, CommandResult, DeviceContext
+from PySide6.QtCore import QObject, Signal
+
+from .command_runner import AdbCommand, CommandRunner, Priority
+from .device_context import DeviceContext
+from .device_monitor import DeviceMonitor
+from .logger import get_logger
+from .process_manager import ProcessManager
+
+_log = get_logger(__name__)
+
+DEFAULT_TIMEOUT_S = 30
 
 
-class CommandRunner:
-    """Thread-pooled one-shot ADB commands (§5.1)."""
+class AdbService(QObject):
+    """Singleton façade over the ADB service components."""
 
-    def submit(
-        self,
-        serial: Optional[str],
-        args: tuple[str, ...],
-        timeout_s: int,
-        priority: CommandPriority = CommandPriority.NORMAL,
-    ) -> str:
-        """Queue a command. Returns a command id used in Qt signals."""
-        raise NotImplementedError
+    activeDeviceChanged = Signal(object)  # DeviceContext | None
 
-    def cancel(self, command_id: str) -> None:
-        raise NotImplementedError
+    _instance: Optional["AdbService"] = None
 
+    def __init__(self, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self.commands = CommandRunner(self)
+        self.processes = ProcessManager(self)
+        self.devices = DeviceMonitor(self.commands, self.processes, self)
+        self._active: Optional[DeviceContext] = None
+        self._started = False
+        self.devices.deviceDisconnected.connect(self._on_device_disconnected)
+        self.devices.deviceStateChanged.connect(self._on_device_state_changed)
 
-class ProcessManager:
-    """Long-lived ADB processes — terminal PTY, scrcpy, logcat export (§5.2)."""
-
-    def start(self, args: tuple[str, ...]) -> str:
-        """Start a managed process. Returns a process id used in Qt signals."""
-        raise NotImplementedError
-
-    def stop(self, process_id: str) -> None:
-        raise NotImplementedError
-
-    def stop_all(self) -> None:
-        """Called on application exit to terminate all managed processes."""
-        raise NotImplementedError
-
-
-class DeviceMonitor:
-    """Tracks the set of connected ADB devices (§5.3)."""
-
+    # --- lifecycle ------------------------------------------------------
     def start(self) -> None:
-        """Begin monitoring. Prefers ``adb track-devices``; falls back to a
-        3-second poll of ``adb devices`` if the persistent stream fails."""
-        raise NotImplementedError
+        if self._started:
+            return
+        _log.info("AdbService starting")
+        self.devices.start()
+        self._started = True
 
     def stop(self) -> None:
-        raise NotImplementedError
+        if not self._started:
+            return
+        _log.info("AdbService stopping")
+        self.devices.stop()
+        self.processes.stop_all()
+        self.commands.shutdown(wait=False)
+        self._started = False
 
+    # --- command helpers ------------------------------------------------
+    def run_command(
+        self,
+        serial: Optional[str],
+        args: list,
+        priority: Priority = Priority.NORMAL,
+        timeout: int = DEFAULT_TIMEOUT_S,
+    ) -> str:
+        """Enqueue a one-shot ADB command. Returns the command id."""
+        return self.commands.submit(serial, list(args), int(timeout), priority)
 
-def translate_adb_error(raw: str) -> str:
-    """Map a known raw ADB/bundletool error string to an English message.
+    def shell(self, serial: str, cmd_string: str, timeout: int = DEFAULT_TIMEOUT_S) -> str:
+        """Run ``adb -s <serial> shell <cmd_string>``. Returns the command id."""
+        return self.commands.submit(
+            serial,
+            ["shell", cmd_string],
+            int(timeout),
+            Priority.HIGH,
+        )
 
-    Falls back to ``raw`` when no mapping is known. The raw output is always
-    surfaced to the UI alongside the translation (§5.4 / §7).
-    """
-    raise NotImplementedError
-
-
-class AdbService:
-    """Facade owning :class:`CommandRunner`, :class:`ProcessManager`, and
-    :class:`DeviceMonitor`. Modules see this singleton only."""
-
-    def __init__(self) -> None:
-        self.commands = CommandRunner()
-        self.processes = ProcessManager()
-        self.devices = DeviceMonitor()
-
-    def start(self) -> None:
-        raise NotImplementedError
-
-    def shutdown(self) -> None:
-        raise NotImplementedError
-
+    # --- active device --------------------------------------------------
+    @property
     def active_device(self) -> Optional[DeviceContext]:
-        raise NotImplementedError
+        return self._active
 
     def set_active_device(self, ctx: Optional[DeviceContext]) -> None:
-        raise NotImplementedError
+        if ctx == self._active:
+            return
+        self._active = ctx
+        _log.info("active device = %s", ctx.serial if ctx else None)
+        self.activeDeviceChanged.emit(ctx)
 
-    def last_command_result(self, command_id: str) -> Optional[CommandResult]:
-        raise NotImplementedError
+    def _on_device_disconnected(self, serial: str) -> None:
+        if self._active is not None and self._active.serial == serial:
+            self.set_active_device(None)
+
+    def _on_device_state_changed(self, ctx: DeviceContext) -> None:
+        if self._active is not None and self._active.serial == ctx.serial:
+            self._active = ctx
+            self.activeDeviceChanged.emit(ctx)
+
+
+def get_adb_service() -> AdbService:
+    """Return the process-wide :class:`AdbService` singleton."""
+    if AdbService._instance is None:
+        AdbService._instance = AdbService()
+    return AdbService._instance
+
+
+def shutdown_adb_service() -> None:
+    if AdbService._instance is not None:
+        AdbService._instance.stop()
+        AdbService._instance = None
+
+
+__all__ = [
+    "AdbService",
+    "AdbCommand",
+    "Priority",
+    "get_adb_service",
+    "shutdown_adb_service",
+    "DEFAULT_TIMEOUT_S",
+]
