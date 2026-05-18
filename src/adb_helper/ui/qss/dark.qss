@@ -1,0 +1,304 @@
+/* Dark theme — generated from DESIGN_TOKENS.md.
+ * OKLCH values precomputed to sRGB hex per the porting note in DESIGN_TOKENS.md.
+ *
+ * Token map (dark):
+ *   --bg                 #0b0d10
+ *   --bg-elev            #111418
+ *   --surface            #161a1f
+ *   --surface-2          #1c2128
+ *   --surface-3          #232932
+ *   --border             #1f242b
+ *   --border-strong      #2a3038
+ *   --text-primary       #e6e8eb
+ *   --text-secondary     #9aa3ad
+ *   --text-muted         #5f6873
+ *   --accent             oklch(0.78 0.13 180) -> #2ec5c5
+ *   --accent-soft        15% alpha             -> rgba(46,197,197,38)
+ *   --accent-faint        8% alpha             -> rgba(46,197,197,20)
+ *   --success            oklch(0.74 0.16 145) -> #2eb872
+ *   --warn               oklch(0.78 0.15 75)  -> #d4a017
+ *   --danger             oklch(0.68 0.20 25)  -> #d94c3a
+ */
+
+QMainWindow,
+QWidget {
+    background-color: #0b0d10;
+    color: #e6e8eb;
+    font-size: 13px;
+}
+
+QLabel {
+    color: #e6e8eb;
+    background: transparent;
+}
+
+QLabel[muted="true"] {
+    color: #5f6873;
+}
+
+QLabel[secondary="true"] {
+    color: #9aa3ad;
+}
+
+QPushButton {
+    background-color: #1c2128;
+    color: #e6e8eb;
+    border: 1px solid #2a3038;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    min-height: 30px;
+}
+QPushButton:hover {
+    background-color: #232932;
+    border-color: #2ec5c5;
+}
+QPushButton:pressed {
+    background-color: #161a1f;
+}
+QPushButton:disabled {
+    color: #5f6873;
+    background-color: #161a1f;
+    border-color: #1f242b;
+}
+QPushButton[primary="true"] {
+    background-color: #2ec5c5;
+    color: #0b0d10;
+    border: 1px solid #2ec5c5;
+}
+QPushButton[primary="true"]:hover {
+    background-color: #3ad3d3;
+}
+QPushButton[danger="true"] {
+    color: #d94c3a;
+}
+
+QLineEdit,
+QTextEdit,
+QPlainTextEdit#filterInput {
+    background-color: #161a1f;
+    color: #e6e8eb;
+    border: 1px solid #2a3038;
+    border-radius: 4px;
+    padding: 4px 8px;
+    selection-background-color: rgba(46, 197, 197, 38);
+    min-height: 30px;
+    font-size: 12px;
+}
+QLineEdit:focus,
+QTextEdit:focus {
+    border-color: #2ec5c5;
+}
+QLineEdit:disabled {
+    color: #5f6873;
+    background-color: #111418;
+}
+
+QComboBox {
+    background-color: #161a1f;
+    color: #e6e8eb;
+    border: 1px solid #2a3038;
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-height: 30px;
+    font-size: 12px;
+}
+QComboBox:hover {
+    border-color: #2ec5c5;
+}
+QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+QComboBox QAbstractItemView {
+    background-color: #161a1f;
+    color: #e6e8eb;
+    border: 1px solid #2a3038;
+    selection-background-color: rgba(46, 197, 197, 38);
+    selection-color: #e6e8eb;
+}
+
+QCheckBox {
+    color: #e6e8eb;
+    spacing: 6px;
+    font-size: 12px;
+}
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #2a3038;
+    border-radius: 3px;
+    background-color: #161a1f;
+}
+QCheckBox::indicator:checked {
+    background-color: #2ec5c5;
+    border-color: #2ec5c5;
+}
+QCheckBox::indicator:hover {
+    border-color: #2ec5c5;
+}
+
+QTableView,
+QTreeView,
+QListView {
+    background-color: #0b0d10;
+    color: #e6e8eb;
+    alternate-background-color: #111418;
+    border: 1px solid #1f242b;
+    gridline-color: #1f242b;
+    selection-background-color: rgba(46, 197, 197, 20);
+    selection-color: #e6e8eb;
+    font-size: 12px;
+}
+QTableView::item,
+QTreeView::item,
+QListView::item {
+    padding: 6px;
+    min-height: 36px;
+}
+QTableView::item:hover,
+QTreeView::item:hover,
+QListView::item:hover {
+    background-color: #1c2128;
+}
+QTableView::item:selected,
+QTreeView::item:selected,
+QListView::item:selected {
+    background-color: rgba(46, 197, 197, 20);
+    color: #e6e8eb;
+}
+QHeaderView::section {
+    background-color: #111418;
+    color: #9aa3ad;
+    border: none;
+    border-right: 1px solid #1f242b;
+    border-bottom: 1px solid #1f242b;
+    padding: 6px 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+QProgressBar {
+    background-color: #1c2128;
+    border: none;
+    border-radius: 3px;
+    text-align: center;
+    color: #e6e8eb;
+    height: 6px;
+    font-size: 11px;
+}
+QProgressBar::chunk {
+    background-color: #2ec5c5;
+    border-radius: 3px;
+}
+QProgressBar[state="warn"]::chunk {
+    background-color: #d4a017;
+}
+QProgressBar[state="danger"]::chunk {
+    background-color: #d94c3a;
+}
+
+QScrollBar:vertical {
+    background: #0b0d10;
+    width: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:vertical {
+    background: #232932;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #2a3038;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+QScrollBar:horizontal {
+    background: #0b0d10;
+    height: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:horizontal {
+    background: #232932;
+    border-radius: 4px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #2a3038;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #1f242b;
+    background-color: #0b0d10;
+    top: -1px;
+}
+QTabBar::tab {
+    background-color: #111418;
+    color: #9aa3ad;
+    border: 1px solid #1f242b;
+    padding: 6px 14px;
+    font-size: 12px;
+}
+QTabBar::tab:selected {
+    background-color: #0b0d10;
+    color: #e6e8eb;
+    border-bottom-color: #0b0d10;
+}
+QTabBar::tab:hover {
+    color: #e6e8eb;
+}
+
+QDialog {
+    background-color: #111418;
+    color: #e6e8eb;
+    border: 1px solid #1f242b;
+}
+
+QStatusBar {
+    background-color: #111418;
+    color: #9aa3ad;
+    border-top: 1px solid #1f242b;
+    font-size: 11px;
+    min-height: 28px;
+}
+QStatusBar::item {
+    border: none;
+}
+
+QToolTip {
+    background-color: #1c2128;
+    color: #e6e8eb;
+    border: 1px solid #2a3038;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* Sidebar — object name "appSidebar". */
+QWidget#appSidebar {
+    background-color: #111418;
+    border-right: 1px solid #1f242b;
+}
+QPushButton#sidebarItem {
+    background-color: transparent;
+    color: #9aa3ad;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    text-align: left;
+    min-height: 36px;
+    font-size: 13px;
+}
+QPushButton#sidebarItem:hover {
+    background-color: rgba(46, 197, 197, 20);
+    color: #e6e8eb;
+}
+QPushButton#sidebarItem[active="true"] {
+    background-color: rgba(46, 197, 197, 38);
+    color: #2ec5c5;
+}
