@@ -7,6 +7,7 @@ version number.
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import threading
@@ -14,6 +15,8 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from .platform import get_app_data_dir
+
+_HISTORY_LIMIT = 50
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "db" / "migrations"
 _MIGRATION_VERSION_RE = re.compile(r"^(\d+)_")
@@ -79,23 +82,82 @@ class DatabaseManager:
                     self._conn.executescript(sql)
 
     # ------------------------------------------------------------------
-    # Stub methods — filled in Stage 11. Signatures fixed so callers can
-    # be wired up against the interface ahead of implementation.
+    # Command history (Spec §3.2.2) — last 50 entries kept.
     # ------------------------------------------------------------------
-    def get_command_history(self, limit: int = 50) -> List[Any]:
-        raise NotImplementedError
+    def get_command_history(self, limit: int = _HISTORY_LIMIT) -> List[str]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT command FROM command_history "
+                "ORDER BY id DESC LIMIT ?",
+                (int(limit),),
+            )
+            rows = cur.fetchall()
+        return [r[0] for r in rows]
 
     def add_command_history(self, command: str) -> None:
-        raise NotImplementedError
+        cmd = command.strip()
+        if not cmd:
+            return
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO command_history(command) VALUES(?)", (cmd,)
+            )
+            self._conn.execute(
+                "DELETE FROM command_history WHERE id NOT IN ("
+                "SELECT id FROM command_history ORDER BY id DESC LIMIT ?"
+                ")",
+                (_HISTORY_LIMIT,),
+            )
 
-    def get_macros(self) -> List[Any]:
-        raise NotImplementedError
+    # ------------------------------------------------------------------
+    # Macros (Spec §3.2.3) — commands serialised as JSON list of strings.
+    # ------------------------------------------------------------------
+    def get_macros(self) -> List[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id, name, commands, created_at FROM macros "
+                "ORDER BY created_at DESC, id DESC"
+            )
+            rows = cur.fetchall()
+        out: List[dict] = []
+        for r in rows:
+            try:
+                cmds = json.loads(r[2]) if r[2] else []
+            except json.JSONDecodeError:
+                cmds = []
+            if not isinstance(cmds, list):
+                cmds = []
+            out.append(
+                {
+                    "id": int(r[0]),
+                    "name": r[1] or "",
+                    "commands": [str(c) for c in cmds],
+                    "created_at": r[3],
+                }
+            )
+        return out
 
     def save_macro(self, name: str, commands: List[str]) -> int:
-        raise NotImplementedError
+        payload = json.dumps(list(commands), ensure_ascii=False)
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO macros(name, commands) VALUES(?, ?)",
+                (name, payload),
+            )
+            return int(cur.lastrowid)
+
+    def rename_macro(self, macro_id: int, name: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE macros SET name=? WHERE id=?",
+                (name, int(macro_id)),
+            )
 
     def delete_macro(self, macro_id: int) -> None:
-        raise NotImplementedError
+        with self._lock, self._conn:
+            self._conn.execute(
+                "DELETE FROM macros WHERE id=?", (int(macro_id),)
+            )
 
     def get_paired_devices(self) -> List[Any]:
         with self._lock:
