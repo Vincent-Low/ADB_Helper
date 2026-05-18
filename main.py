@@ -1,8 +1,13 @@
 """ADB_Helper entry point (Spec §1.7, §2.1, §8)."""
 from __future__ import annotations
 
+import os
 import sys
 from typing import List
+
+_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 from PySide6.QtWidgets import QApplication
 

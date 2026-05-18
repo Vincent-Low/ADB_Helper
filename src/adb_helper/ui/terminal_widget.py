@@ -59,16 +59,16 @@ _MONO_FALLBACKS = ("Cascadia Code", "JetBrains Mono", "Consolas", "Menlo", "Deja
 
 # SGR colour-index → palette key.
 _FG_BY_CODE: Dict[int, str] = {
-    30: "Black", 31: "Red", 32: "Green", 33: "Yellow",
-    34: "Blue", 35: "Magenta", 36: "Cyan", 37: "White",
-    90: "BrightBlack", 91: "BrightRed", 92: "BrightGreen", 93: "BrightYellow",
-    94: "BrightBlue", 95: "BrightMagenta", 96: "BrightCyan", 97: "BrightWhite",
+    30: "black", 31: "red", 32: "green", 33: "yellow",
+    34: "blue", 35: "magenta", 36: "cyan", 37: "white",
+    90: "bright_black", 91: "bright_red", 92: "bright_green", 93: "bright_yellow",
+    94: "bright_blue", 95: "bright_magenta", 96: "bright_cyan", 97: "bright_white",
 }
 _BG_BY_CODE: Dict[int, str] = {
-    40: "Black", 41: "Red", 42: "Green", 43: "Yellow",
-    44: "Blue", 45: "Magenta", 46: "Cyan", 47: "White",
-    100: "BrightBlack", 101: "BrightRed", 102: "BrightGreen", 103: "BrightYellow",
-    104: "BrightBlue", 105: "BrightMagenta", 106: "BrightCyan", 107: "BrightWhite",
+    40: "black", 41: "red", 42: "green", 43: "yellow",
+    44: "blue", 45: "magenta", 46: "cyan", 47: "white",
+    100: "bright_black", 101: "bright_red", 102: "bright_green", 103: "bright_yellow",
+    104: "bright_blue", 105: "bright_magenta", 106: "bright_cyan", 107: "bright_white",
 }
 
 
@@ -125,7 +125,7 @@ class _AnsiRenderer:
     # --- internals -----------------------------------------------------
     @staticmethod
     def _apply_palette_to_format(fmt: QTextCharFormat, palette: Dict[str, str]) -> None:
-        fg = QColor(palette["Foreground"])
+        fg = QColor(palette["foreground"])
         fmt.setForeground(fg)
         # Background of glyphs left transparent; widget background carries
         # the palette colour. Setting it here doubles up on selection.
@@ -293,7 +293,7 @@ class _AnsiRenderer:
             elif code == 22:
                 self._cur_fmt.setFontWeight(QFont.Weight.Normal)
             elif code == 39:
-                self._cur_fmt.setForeground(QColor(self._palette["Foreground"]))
+                self._cur_fmt.setForeground(QColor(self._palette["foreground"]))
             elif code == 49:
                 self._cur_fmt.clearBackground()
             elif code in _FG_BY_CODE:
@@ -402,15 +402,15 @@ class TerminalWidget(QWidget):
         self._apply_palette()
 
     def _apply_palette(self) -> None:
-        bg = QColor(self._palette["Background"])
-        fg = QColor(self._palette["Foreground"])
+        bg = QColor(self._palette["background"])
+        fg = QColor(self._palette["foreground"])
         for w in (self._view, self._input, self._prompt, self):
             pal = w.palette()
             pal.setColor(QPalette.ColorRole.Base, bg)
             pal.setColor(QPalette.ColorRole.Window, bg)
             pal.setColor(QPalette.ColorRole.Text, fg)
             pal.setColor(QPalette.ColorRole.WindowText, fg)
-            pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(self._palette["BrightBlack"]))
+            pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(self._palette["bright_black"]))
             w.setPalette(pal)
             w.setAutoFillBackground(True)
 

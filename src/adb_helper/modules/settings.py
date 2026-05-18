@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import Qt, QObject, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -386,11 +386,11 @@ class SettingsModule(IModule):
 
         for row, key in enumerate(_DEP_KEYS):
             comp_item = QTableWidgetItem(_DEP_LABELS[key])
-            comp_item.setFlags(comp_item.flags() & ~0x2)  # not editable
+            comp_item.setFlags(comp_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._deps_table.setItem(row, _COL_COMPONENT, comp_item)
             for col in (_COL_INSTALLED, _COL_LATEST, _COL_STATUS):
                 item = QTableWidgetItem("—")
-                item.setFlags(item.flags() & ~0x2)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._deps_table.setItem(row, col, item)
             action_btn = QPushButton("", self)
             action_btn.setEnabled(False)
