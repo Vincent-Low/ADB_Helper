@@ -1,13 +1,16 @@
-"""Allow `python -m adb_helper`. Scaffold stub."""
+"""Allow `python -m adb_helper` and `adb-helper` console script."""
 from __future__ import annotations
 
 import sys
 
 
 def main() -> int:
-    raise NotImplementedError(
-        "ADB_Helper is at the scaffolding stage; the entry point is not wired up yet."
-    )
+    import os
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+    import main as _entry
+    return _entry.main()
 
 
 if __name__ == "__main__":
