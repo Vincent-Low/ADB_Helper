@@ -6,9 +6,12 @@ the ``active`` Qt property (styled in QSS).
 """
 from __future__ import annotations
 
+import pathlib
 from typing import Dict, Optional
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QPushButton,
@@ -23,6 +26,9 @@ from ..core.registry import ModuleRegistry
 SIDEBAR_W_EXPANDED = 220
 SIDEBAR_W_COLLAPSED = 56
 COLLAPSE_THRESHOLD = 1280
+
+_ICON_INACTIVE = "#4a525b"
+_ICON_ACTIVE = "#2ec5c5"
 
 _ICON_MAP: Dict[str, QStyle.StandardPixmap] = {
     "connections":    QStyle.SP_DriveNetIcon,
@@ -82,6 +88,7 @@ class Sidebar(QWidget):
             btn.setProperty("active", "true" if active else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+            btn.update()
 
     def update_for_window_width(self, width: int) -> None:
         collapsed = width < COLLAPSE_THRESHOLD
@@ -99,13 +106,45 @@ class Sidebar(QWidget):
         btn.setCheckable(True)
         btn.setCursor(Qt.PointingHandCursor)
         btn.setIconSize(QSize(18, 18))
-        std_icon = _ICON_MAP.get(icon_name, QStyle.SP_FileIcon)
-        btn.setIcon(self.style().standardIcon(std_icon))
+        svg_icon = self._load_svg_icon(icon_name)
+        if svg_icon is not None:
+            btn.setIcon(svg_icon)
+            btn.setProperty("_svg_icon_name", icon_name)
+        else:
+            std_icon = _ICON_MAP.get(icon_name, QStyle.SP_FileIcon)
+            btn.setIcon(self.style().standardIcon(std_icon))
         btn.setToolTip(label)
         btn.setText(label)
         btn.setProperty("module_id", mid)
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         return btn
+
+    def _load_svg_icon(self, name: str) -> Optional[QIcon]:
+        """Load SVG from assets/icons/, build a dual-state QIcon (normal+selected)."""
+        root = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+        svg_path = root / "assets" / "icons" / f"{name}.svg"
+        if not svg_path.exists():
+            return None
+        try:
+            svg_text = svg_path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        icon = QIcon()
+        for state_colour, mode, state in (
+            (_ICON_INACTIVE, QIcon.Mode.Normal,   QIcon.State.Off),
+            (_ICON_ACTIVE,   QIcon.Mode.Selected, QIcon.State.On),
+            (_ICON_ACTIVE,   QIcon.Mode.Active,   QIcon.State.On),
+            (_ICON_ACTIVE,   QIcon.Mode.Normal,   QIcon.State.On),
+        ):
+            data = svg_text.replace("currentColor", state_colour).encode("utf-8")
+            renderer = QSvgRenderer(data)
+            pix = QPixmap(20, 20)
+            pix.fill(Qt.transparent)
+            painter = QPainter(pix)
+            renderer.render(painter)
+            painter.end()
+            icon.addPixmap(pix, mode, state)
+        return icon
 
     def _apply_button_mode(self, btn: QPushButton, mid: str) -> None:
         if self._collapsed:

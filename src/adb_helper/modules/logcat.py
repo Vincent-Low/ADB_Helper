@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, Optional
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,6 +31,7 @@ from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
 from ..core.settings_manager import SettingsManager
+from ..ui.style_utils import set_variant as _set_variant
 from ..core import platform as _platform
 
 _log = get_logger(__name__)
@@ -46,8 +48,8 @@ class _LogcatErrorDialog(QDialog):
         self.setMinimumWidth(480)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(8)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         root.addWidget(QLabel(message, self))
 
@@ -95,26 +97,44 @@ class LogcatModule(IModule):
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
+        root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(12)
 
-        btn_row = QHBoxLayout()
-        self._export_btn = QPushButton(strings.LOG_BTN_EXPORT, self)
-        self._export_btn.setEnabled(False)
-        self._export_btn.clicked.connect(self._on_export)
-        btn_row.addWidget(self._export_btn)
-        btn_row.addStretch(1)
-        root.addLayout(btn_row)
+        root.addStretch(1)
 
-        self._progress = QProgressBar(self)
+        center = QWidget(self)
+        center_lay = QVBoxLayout(center)
+        center_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        center_lay.setSpacing(14)
+
+        self._export_btn = QPushButton(strings.LOG_BTN_EXPORT, center)
+        _set_variant(self._export_btn, "primary")
+        self._export_btn.setEnabled(False)
+        self._export_btn.setMinimumSize(220, 44)
+        self._export_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._export_btn.clicked.connect(self._on_export)
+        center_lay.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._desc_lbl = QLabel(strings.LOG_HINT_DESC, center)
+        self._desc_lbl.setWordWrap(True)
+        self._desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._desc_lbl.setProperty("secondary", "true")
+        self._desc_lbl.setMaximumWidth(420)
+        center_lay.addWidget(self._desc_lbl, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._progress = QProgressBar(center)
         self._progress.setRange(0, 0)
         self._progress.setVisible(False)
-        root.addWidget(self._progress)
+        self._progress.setFixedWidth(260)
+        center_lay.addWidget(self._progress, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        self._status_lbl = QLabel("", self)
+        self._status_lbl = QLabel("", center)
         self._status_lbl.setProperty("secondary", "true")
-        root.addWidget(self._status_lbl)
+        self._status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._status_lbl.setWordWrap(True)
+        center_lay.addWidget(self._status_lbl, 0, Qt.AlignmentFlag.AlignHCenter)
 
+        root.addWidget(center, 0, Qt.AlignmentFlag.AlignHCenter)
         root.addStretch(1)
 
     def _wire_signals(self) -> None:

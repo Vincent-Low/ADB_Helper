@@ -52,6 +52,7 @@ from ..core.device_context import DeviceContext
 from ..core.error_parser import parse as parse_error
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import set_variant as _set_variant
 from ..core import platform as _platform
 
 _log = get_logger(__name__)
@@ -114,8 +115,8 @@ class _SummaryDialog(QDialog):
         self.setMinimumHeight(420)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(8)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         ok = sum(1 for r in results if r.state == _RES_OK)
         fail = sum(1 for r in results if r.state != _RES_OK)
@@ -232,7 +233,7 @@ class InstallerModule(IModule):
     # ----------------------------- UI ----------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
+        root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(10)
 
         # Files
@@ -259,6 +260,7 @@ class InstallerModule(IModule):
         self._add_btn = QPushButton(strings.INSTALLER_BTN_ADD_FILES, self)
         self._add_btn.clicked.connect(self._on_add_files)
         self._remove_btn = QPushButton(strings.INSTALLER_BTN_REMOVE, self)
+        _set_variant(self._remove_btn, "destructive")
         self._remove_btn.clicked.connect(self._on_remove_file)
         self._clear_btn = QPushButton(strings.INSTALLER_BTN_CLEAR, self)
         self._clear_btn.clicked.connect(self._on_clear_files)
@@ -280,6 +282,7 @@ class InstallerModule(IModule):
         # Run controls
         run_row = QHBoxLayout()
         self._install_btn = QPushButton(strings.INSTALLER_BTN_INSTALL, self)
+        _set_variant(self._install_btn, "primary")
         self._install_btn.clicked.connect(self._on_install)
         self._cancel_btn = QPushButton(strings.INSTALLER_BTN_CANCEL, self)
         self._cancel_btn.clicked.connect(self._on_cancel)

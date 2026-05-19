@@ -362,6 +362,10 @@ LOG_MSG_ERROR: Final = "Failed to capture logcat from the device."
 LOG_BTN_SHOW_DETAILS: Final = "Show Details"
 LOG_BTN_HIDE_DETAILS: Final = "Hide Details"
 LOG_BTN_CLOSE: Final = "Close"
+LOG_HINT_DESC: Final = (
+    "Capture the current device log (one-shot adb logcat -d) and save it "
+    "to the configured logcat folder."
+)
 
 # --- Installer module (Spec §3.3) ----------------------------------------
 INSTALLER_LABEL_FILES: Final = "Files to install"

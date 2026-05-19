@@ -339,8 +339,8 @@ class SettingsModule(IModule):
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         # --- About ---------------------------------------------------------
         about_box = QGroupBox(strings.SETT_SEC_ABOUT, self)
@@ -375,12 +375,15 @@ class SettingsModule(IModule):
             QAbstractItemView.SelectionMode.NoSelection
         )
         self._deps_table.verticalHeader().setVisible(False)
+        self._deps_table.verticalHeader().setDefaultSectionSize(40)
+        self._deps_table.verticalHeader().setMinimumSectionSize(40)
         hdr = self._deps_table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(_COL_ACTION, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(_COL_ACTION, QHeaderView.ResizeMode.Fixed)
+        self._deps_table.setColumnWidth(_COL_ACTION, 100)
         self._deps_table.setFixedHeight(
             self._deps_table.horizontalHeader().height()
-            + self._deps_table.rowHeight(0) * len(_DEP_KEYS)
+            + 40 * len(_DEP_KEYS)
             + 4
         )
 
@@ -395,6 +398,8 @@ class SettingsModule(IModule):
             action_btn = QPushButton("", self)
             action_btn.setEnabled(False)
             action_btn.setProperty("dep_key", key)
+            action_btn.setMinimumWidth(80)
+            action_btn.setMinimumHeight(28)
             action_btn.clicked.connect(
                 lambda _checked=False, k=key: self._on_dep_action(k)
             )

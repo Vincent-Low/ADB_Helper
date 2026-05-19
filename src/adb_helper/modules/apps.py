@@ -43,6 +43,7 @@ from ..core.command_runner import AdbResult, Priority
 from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import set_variant as _set_variant
 
 _log = get_logger(__name__)
 
@@ -154,8 +155,8 @@ class AppsModule(IModule):
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(10)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         # --- Storage / RAM bars (§3.7.3) -----------------------------------
         bars = QGroupBox(self)
@@ -169,6 +170,7 @@ class AppsModule(IModule):
         self._ram_bar = QProgressBar(self)
         self._ram_bar.setRange(0, 1)
         self._ram_bar.setValue(0)
+        self._ram_bar.setTextVisible(False)
         self._ram_label = QLabel("—", self)
         self._ram_label.setProperty("secondary", "true")
         ram_col.addWidget(self._ram_title)
@@ -182,6 +184,7 @@ class AppsModule(IModule):
         self._sto_bar = QProgressBar(self)
         self._sto_bar.setRange(0, 1)
         self._sto_bar.setValue(0)
+        self._sto_bar.setTextVisible(False)
         self._sto_label = QLabel("—", self)
         self._sto_label.setProperty("secondary", "true")
         sto_col.addWidget(self._sto_title)
@@ -247,6 +250,7 @@ class AppsModule(IModule):
         actions = QHBoxLayout()
         actions.setSpacing(8)
         self._delete_btn = QPushButton(strings.APPS_BTN_DELETE, self)
+        _set_variant(self._delete_btn, "destructive")
         self._delete_btn.clicked.connect(self._on_delete)
         self._disable_btn = QPushButton(strings.APPS_BTN_DISABLE, self)
         self._disable_btn.clicked.connect(self._on_disable)

@@ -79,8 +79,8 @@ class DeviceButtonsModule(IModule):
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
@@ -93,6 +93,8 @@ class DeviceButtonsModule(IModule):
 
         def _add(label: str, slot, row: int, col: int) -> QPushButton:
             btn = QPushButton(label, self)
+            btn.setMinimumHeight(48)
+            btn.setMinimumWidth(120)
             btn.clicked.connect(slot)
             grid.addWidget(btn, row, col)
             self._buttons.append(btn)

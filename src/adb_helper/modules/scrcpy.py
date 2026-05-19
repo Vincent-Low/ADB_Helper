@@ -42,6 +42,7 @@ from ..core.device_context import DeviceContext
 from ..core.downloader import AtomicDownloader
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import set_variant as _set_variant
 from ..core import platform as _platform
 
 _log = get_logger(__name__)
@@ -76,8 +77,8 @@ class ScrcpyModule(IModule):
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
@@ -144,6 +145,7 @@ class ScrcpyModule(IModule):
         actions = QHBoxLayout()
         actions.addStretch(1)
         self._launch_btn = QPushButton(strings.SCRCPY_BTN_LAUNCH, page)
+        _set_variant(self._launch_btn, "primary")
         self._launch_btn.setEnabled(False)
         self._launch_btn.clicked.connect(self._on_launch_clicked)
         actions.addWidget(self._launch_btn)

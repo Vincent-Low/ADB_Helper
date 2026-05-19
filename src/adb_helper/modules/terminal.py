@@ -46,8 +46,9 @@ from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
 from ..core.pty_session import PtySession
+from ..ui.style_utils import set_variant as _set_variant
 from ..ui.terminal_widget import TerminalWidget
-from ..ui.theme_manager import Theme
+from ..ui.theme_manager import Theme, get_theme_manager
 
 _log = get_logger(__name__)
 
@@ -145,8 +146,8 @@ class TerminalModule(IModule):
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         root.addWidget(splitter, 1)
@@ -174,14 +175,17 @@ class TerminalModule(IModule):
 
         # Right: macros + recording.
         right = QWidget(splitter)
+        right.setObjectName("macroPanel")
+        right.setMinimumWidth(200)
         right_lay = QVBoxLayout(right)
-        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setContentsMargins(10, 8, 10, 8)
         right_lay.setSpacing(6)
 
         right_lay.addWidget(QLabel(strings.TERM_LABEL_MACROS, right))
 
         actions = QHBoxLayout()
         self._record_btn = QPushButton(strings.TERM_BTN_RECORD, right)
+        _set_variant(self._record_btn, "primary")
         actions.addWidget(self._record_btn, 0)
         self._play_btn = QPushButton(strings.TERM_BTN_PLAY, right)
         self._play_btn.setEnabled(False)
@@ -192,6 +196,8 @@ class TerminalModule(IModule):
         self._macro_list = QListWidget(right)
         self._macro_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._macro_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        from PySide6.QtWidgets import QSizePolicy as _QSP
+        self._macro_list.setSizePolicy(_QSP.Expanding, _QSP.Expanding)
         right_lay.addWidget(self._macro_list, 1)
 
         self._playback_label = QLabel("", right)
@@ -228,6 +234,7 @@ class TerminalModule(IModule):
     # ------------------------------------------------------------------
     def on_activate(self) -> None:
         self._activated = True
+        self._term.set_dark(self._resolve_dark())
         self._reload_history()
         self._reload_macros()
         ctx = self._adb.active_device
@@ -618,6 +625,9 @@ class TerminalModule(IModule):
     # Theme glue
     # ------------------------------------------------------------------
     def _theme_manager(self):
+        mgr = get_theme_manager()
+        if mgr is not None:
+            return mgr
         win = self.window()
         return getattr(win, "_theme", None)
 

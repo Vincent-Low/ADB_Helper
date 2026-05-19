@@ -39,6 +39,7 @@ from ..core.device_context import DeviceContext
 from ..core.error_parser import parse as parse_error
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import set_variant as _set_variant
 
 _log = get_logger(__name__)
 
@@ -106,8 +107,8 @@ class ConnectionsModule(IModule):
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         root.addWidget(self._build_live_group())
         root.addWidget(self._build_wifi_classic_group())
@@ -140,6 +141,7 @@ class ConnectionsModule(IModule):
         actions = QHBoxLayout()
         actions.addStretch(1)
         self._disconnect_btn = QPushButton(strings.BTN_DISCONNECT, g)
+        _set_variant(self._disconnect_btn, "destructive")
         self._disconnect_btn.setEnabled(False)
         actions.addWidget(self._disconnect_btn)
         lay.addLayout(actions)
@@ -165,6 +167,7 @@ class ConnectionsModule(IModule):
         row.addWidget(self._wc_port, 0)
 
         self._wc_connect_btn = QPushButton(strings.BTN_CONNECT, g)
+        _set_variant(self._wc_connect_btn, "primary")
         row.addWidget(self._wc_connect_btn, 0)
         lay.addLayout(row)
 
@@ -206,6 +209,7 @@ class ConnectionsModule(IModule):
         row.addWidget(self._wp_pin, 0)
 
         self._wp_pair_btn = QPushButton(strings.BTN_PAIR, g)
+        _set_variant(self._wp_pair_btn, "primary")
         row.addWidget(self._wp_pair_btn, 0)
         lay.addLayout(row)
 
@@ -235,9 +239,11 @@ class ConnectionsModule(IModule):
         actions = QHBoxLayout()
         actions.addStretch(1)
         self._paired_connect_btn = QPushButton(strings.BTN_CONNECT, g)
+        _set_variant(self._paired_connect_btn, "primary")
         self._paired_connect_btn.setEnabled(False)
         actions.addWidget(self._paired_connect_btn)
         self._paired_forget_btn = QPushButton(strings.BTN_FORGET, g)
+        _set_variant(self._paired_forget_btn, "destructive")
         self._paired_forget_btn.setEnabled(False)
         actions.addWidget(self._paired_forget_btn)
         lay.addLayout(actions)

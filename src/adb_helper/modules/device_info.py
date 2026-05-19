@@ -180,8 +180,8 @@ class DeviceInfoModule(IModule):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(8)
+        root.setContentsMargins(18, 14, 18, 14)
+        root.setSpacing(14)
 
         hdr = QHBoxLayout()
         hdr.addStretch(1)

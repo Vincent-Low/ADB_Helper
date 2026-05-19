@@ -9,7 +9,15 @@ _SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
+os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication
+
+if hasattr(Qt, "AA_EnableHighDpiScaling"):
+    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+if hasattr(Qt, "AA_UseHighDpiPixmaps"):
+    QCoreApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
 from adb_helper.core import strings
 from adb_helper.core.adb_service import get_adb_service, shutdown_adb_service
@@ -56,6 +64,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(strings.APP_NAME)
     app.setQuitOnLastWindowClosed(True)
+    app.setStyle("Fusion")
+    _base_font = app.font()
+    _base_font.setPointSize(10)
+    app.setFont(_base_font)
 
     single = SingleInstance()
     if not single.acquire():

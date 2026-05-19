@@ -366,6 +366,7 @@ class TerminalWidget(QWidget):
         root.setSpacing(4)
 
         self._view = QPlainTextEdit(self)
+        self._view.setObjectName("terminal-output")
         self._view.setReadOnly(True)
         self._view.setUndoRedoEnabled(False)
         self._view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
