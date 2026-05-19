@@ -6,7 +6,9 @@ NORMAL. Subprocess kill on timeout. PIN-mask logging via logger filter.
 from __future__ import annotations
 
 import itertools
+import os
 import shutil
+import stat
 import subprocess
 import threading
 import time
@@ -57,6 +59,10 @@ def resolve_adb_binary() -> str:
     name = "adb.exe" if _platform.IS_WINDOWS else "adb"
     bundled = paths.platform_tools_dir() / name
     if bundled.exists():
+        if not _platform.IS_WINDOWS:
+            current = bundled.stat().st_mode
+            if not (current & stat.S_IXUSR):
+                bundled.chmod(current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         return str(bundled)
     found = shutil.which("adb")
     return found if found else "adb"
