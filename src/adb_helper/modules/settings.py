@@ -89,6 +89,10 @@ class _CheckSignals(QObject):
     done = Signal()
 
 
+class _InstalledSignals(QObject):
+    installed_result = Signal(str, str)  # key, installed_version (empty = not installed)
+
+
 class _UpdateSignals(QObject):
     progress = Signal(str, str)   # key, message
     finished = Signal(str, bool, str)   # key, ok, version_or_error
@@ -249,6 +253,9 @@ class _UpdateWorker:
         self._sig.progress.emit(self._key, strings.SETT_MSG_UPDATING.format(component=strings.SETT_DEP_ADB))
         if not AtomicDownloader.download(url, archive):
             return False, strings.SETT_MSG_UPDATE_FAILED.format(component=strings.SETT_DEP_ADB)
+        # Linux refuses to overwrite a running executable ("Text file busy").
+        # Stop adb server + monitoring before extraction; restart after.
+        _stop_adb_server_before_update()
         try:
             with zipfile.ZipFile(archive) as zf:
                 for member in zf.namelist():
@@ -270,6 +277,7 @@ class _UpdateWorker:
             except OSError:
                 pass
         version = _adb_installed_version()
+        _restart_adb_server_after_update()
         return True, version
 
     def _update_scrcpy(self) -> tuple[bool, str]:
@@ -329,9 +337,11 @@ class SettingsModule(IModule):
         super().__init__(parent)
         self._check_sigs = _CheckSignals()
         self._update_sigs = _UpdateSignals()
+        self._installed_sigs = _InstalledSignals()
         # dep key -> {asset_url, sha256, action}
         self._dep_state: dict[str, dict] = {k: {} for k in _DEP_KEYS}
         self._updating: Optional[str] = None
+        self._installed_loaded = False
         self._build_ui()
         self._wire_signals()
         self._load_settings()
@@ -485,6 +495,7 @@ class SettingsModule(IModule):
         self._check_sigs.done.connect(self._on_check_done)
         self._update_sigs.progress.connect(self._on_update_progress)
         self._update_sigs.finished.connect(self._on_update_finished)
+        self._installed_sigs.installed_result.connect(self._on_installed_result)
 
     # --------------------------------------------- Settings load / persist
     def _load_settings(self) -> None:
@@ -517,6 +528,43 @@ class SettingsModule(IModule):
     # ----------------------------------------------------- IModule lifecycle
     def on_activate(self) -> None:
         self._load_settings()
+        self._refresh_installed_versions()
+
+    def _refresh_installed_versions(self) -> None:
+        """Populate INSTALLED column from disk only. No network."""
+        if self._updating is not None:
+            return
+        sigs = self._installed_sigs
+
+        def _work() -> None:
+            try:
+                for key in _DEP_KEYS:
+                    if key == "adb":
+                        v = _adb_installed_version()
+                    elif key == "scrcpy":
+                        v = _scrcpy_installed_version()
+                    elif key == "bundletool":
+                        v = _bundletool_installed_version()
+                    else:
+                        v = ""
+                    sigs.installed_result.emit(key, v)
+            except Exception as exc:
+                _log.error("installed version probe failed: %s", exc)
+
+        threading.Thread(target=_work, name="installed-probe", daemon=True).start()
+
+    @Slot(str, str)
+    def _on_installed_result(self, key: str, installed: str) -> None:
+        if key not in _DEP_KEYS:
+            return
+        row = _DEP_KEYS.index(key)
+        item = self._deps_table.item(row, _COL_INSTALLED)
+        if item is None:
+            return
+        # Don't clobber values already populated by Check for Updates.
+        if item.text() not in ("", "—"):
+            return
+        item.setText(installed if installed else strings.SETT_STATUS_NOT_INSTALLED)
 
     def on_deactivate(self) -> None:
         pass
@@ -688,6 +736,48 @@ class SettingsModule(IModule):
 
 
 # ===================================================== Pure helper functions
+
+def _stop_adb_server_before_update() -> None:
+    """Kill the ADB server so its binary is not busy during replacement.
+
+    Subprocess call only — safe to invoke from a worker thread. The running
+    track-devices process inside DeviceMonitor dies as a side-effect; its
+    ProcessManager handler then switches to the poll fallback on the main
+    thread.
+    """
+    import subprocess
+    import time
+    from ..core.command_runner import resolve_adb_binary
+
+    try:
+        adb_path = resolve_adb_binary()
+        subprocess.run(
+            [str(adb_path), "kill-server"],
+            timeout=5,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(0.5)
+    except Exception as exc:
+        _log.warning("adb kill-server failed (continuing): %s", exc)
+
+
+def _restart_adb_server_after_update() -> None:
+    """Start the new adb server. Monitor reconnects via its poll fallback."""
+    import subprocess
+    from ..core.command_runner import resolve_adb_binary
+
+    try:
+        adb_path = resolve_adb_binary()
+        subprocess.run(
+            [str(adb_path), "start-server"],
+            timeout=10,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log.warning("adb start-server failed: %s", exc)
+
 
 def _adb_installed_version() -> str:
     props = paths.platform_tools_dir() / "source.properties"

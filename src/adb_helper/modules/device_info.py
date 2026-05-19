@@ -73,6 +73,7 @@ _FETCH_ROLES: dict[str, list[str]] = {
     "surfaceflinger": ["shell", "dumpsys SurfaceFlinger"],
     "ip_addr": ["shell", "ip addr show wlan0"],
     "ip_link": ["shell", "ip link show wlan0"],
+    "wlan_mac_file": ["shell", "cat /sys/class/net/wlan0/address"],
     "bt_addr": ["shell", "settings get secure bluetooth_address"],
     "cpu_gov": ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"],
     "cpu_min": ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq"],
@@ -352,10 +353,14 @@ class DeviceInfoModule(IModule):
 
         # §3.6.9 Network
         s(S.DI_FIELD_WIFI_IP,  _parse_ip_addr(self._results.get("ip_addr", "")) or _NA)
-        s(S.DI_FIELD_WIFI_MAC, _parse_ip_link(self._results.get("ip_link", "")) or _NA)
+        wifi_mac = (
+            _parse_ip_link(self._results.get("ip_link", ""))
+            or _parse_mac_file(self._results.get("wlan_mac_file", ""))
+        )
+        s(S.DI_FIELD_WIFI_MAC, wifi_mac or _NA)
         bt_raw = self._results.get("bt_addr", "").strip()
         s(S.DI_FIELD_BT_MAC,   bt_raw if bt_raw and bt_raw != "null" else _NA)
-        s(S.DI_FIELD_IMEI,     _NA)
+        s(S.DI_FIELD_IMEI,     strings.DI_VALUE_IMEI_NA)
 
         # §3.6.10 Locale & Time
         lang = (
@@ -461,16 +466,36 @@ def _parse_cpuinfo(text: str) -> dict[str, str]:
     for line in text.splitlines():
         if re.match(r"^processor\s*:\s*\d+", line, re.IGNORECASE):
             cores += 1
-        elif m := re.match(r"^hardware\s*:\s*(.+)", line, re.IGNORECASE):
-            result.setdefault("hardware", m.group(1).strip())
-        elif m := re.match(r"^model name\s*:\s*(.+)", line, re.IGNORECASE):
-            result.setdefault("model_name", m.group(1).strip())
-        elif m := re.match(r"^processor\s*:\s*([A-Za-z].+)", line, re.IGNORECASE):
-            # ARM description line e.g. "Processor : AArch64 Processor rev 2"
-            result.setdefault("model_name", m.group(1).strip())
+    name = _parse_cpu_name(text)
+    if name != _NA:
+        result["model_name"] = name
+    hw = _parse_cpu_hardware(text)
+    if hw != _NA:
+        result["hardware"] = hw
     if cores:
         result["cores"] = str(cores)
     return result
+
+
+def _parse_cpu_name(cpuinfo: str) -> str:
+    for field in ("model name", "Model name", "Processor", "processor"):
+        for line in cpuinfo.splitlines():
+            stripped = line.strip()
+            if stripped.lower().startswith(field.lower() + ":") \
+               or stripped.lower().startswith(field.lower() + "\t"):
+                val = line.split(":", 1)[1].strip() if ":" in line else ""
+                # Skip numeric processor index lines (e.g. "processor : 0")
+                if val and not val.isdigit():
+                    return val
+    return _NA
+
+
+def _parse_cpu_hardware(cpuinfo: str) -> str:
+    for line in cpuinfo.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("hardware") and ":" in stripped:
+            return stripped.split(":", 1)[1].strip()
+    return _NA
 
 
 def _parse_meminfo(text: str) -> dict[str, int]:
@@ -597,8 +622,18 @@ def _parse_ip_addr(text: str) -> str:
 
 
 def _parse_ip_link(text: str) -> str:
-    m = re.search(r"link/ether\s+([\da-fA-F:]+)", text)
-    return m.group(1) if m else ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("link/ether"):
+            parts = stripped.split()
+            if len(parts) >= 2 and re.match(r"^[0-9a-fA-F:]{17}$", parts[1]):
+                return parts[1]
+    return ""
+
+
+def _parse_mac_file(text: str) -> str:
+    line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    return line if re.match(r"^[0-9a-fA-F:]{17}$", line) else ""
 
 
 def _make_value_label(text: str = _DASH) -> QLabel:

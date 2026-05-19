@@ -305,9 +305,10 @@ DI_FIELD_LANGUAGE: Final = "Language"
 DI_FIELD_TIMEZONE: Final = "Timezone"
 
 DI_TOOLTIP_IMEI: Final = (
-    "IMEI requires privileged permissions on Android 10+. "
+    "IMEI is not accessible without root on Android 10+. "
     "This is expected behaviour."
 )
+DI_VALUE_IMEI_NA: Final = "N/A (requires privileged access on Android 10+)"
 
 # --- Apps module (Spec §3.7) ---------------------------------------------
 APPS_BTN_REFRESH: Final = "Refresh"
