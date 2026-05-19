@@ -1,8 +1,8 @@
 """MainWindow — shell that hosts Sidebar + module stack + status bar.
 
 Spec §2.1: default 1280×800, minimum 960×600; geometry persisted via
-SettingsManager. Sidebar auto-collapses below 1280 px width. Active device
-mid-operation disconnect → modal + nav to Connections (Spec §7).
+SettingsManager. Sidebar auto-collapses below 1100 px width (Redesign v1.0).
+Active device mid-operation disconnect → modal + nav to Connections (Spec §7).
 """
 from __future__ import annotations
 

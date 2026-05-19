@@ -16,21 +16,27 @@ import os
 import re
 import tarfile
 import threading
+import time
 import uuid
 import zipfile
+from collections import deque
 from pathlib import Path
-from typing import Optional
+from typing import Deque, Dict, Optional
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -54,6 +60,8 @@ _GITHUB_REPO = "scrcpy"
 _ASSET_RE_LINUX = re.compile(r"^scrcpy-linux-x86_64-v[\d.]+\.tar\.gz$")
 _ASSET_RE_WIN = re.compile(r"^scrcpy-win64-v[\d.]+\.zip$")
 
+_RECENT_MAX = 10
+
 
 # --- background worker signals -------------------------------------------
 class _BinaryWorkerSignals(QObject):
@@ -70,8 +78,11 @@ class ScrcpyModule(IModule):
         self._version_label: str = ""
         self._signals = _BinaryWorkerSignals()
         self._signals.finished.connect(self._on_binary_ready)
+        self._recent: Deque[dict] = deque(maxlen=_RECENT_MAX)
+        self._pid_to_row: Dict[str, int] = {}
         self._build_ui()
         self._adb.activeDeviceChanged.connect(self._on_active_device_changed)
+        self._adb.processes.processStopped.connect(self._on_process_stopped)
         self._refresh_state(self._adb.active_device)
 
     # ------------------------------------------------------------------ UI
@@ -150,7 +161,41 @@ class ScrcpyModule(IModule):
         self._launch_btn.clicked.connect(self._on_launch_clicked)
         actions.addWidget(self._launch_btn)
         lay.addLayout(actions)
-        lay.addStretch(1)
+
+        # Recent launches card (Redesign v1.0).
+        recent_card = QGroupBox(strings.SCRCPY_RECENT_TITLE, page)
+        recent_lay = QVBoxLayout(recent_card)
+        recent_lay.setContentsMargins(8, 8, 8, 8)
+        recent_lay.setSpacing(6)
+
+        self._recent_table = QTableWidget(0, 4, recent_card)
+        self._recent_table.setHorizontalHeaderLabels([
+            strings.SCRCPY_RECENT_COL_TIME,
+            strings.SCRCPY_RECENT_COL_DEVICE,
+            strings.SCRCPY_RECENT_COL_FLAGS,
+            strings.SCRCPY_RECENT_COL_STATUS,
+        ])
+        self._recent_table.verticalHeader().setVisible(False)
+        self._recent_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._recent_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self._recent_table.setFocusPolicy(Qt.NoFocus)
+        self._recent_table.setShowGrid(False)
+        self._recent_table.setAlternatingRowColors(True)
+        header = self._recent_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self._recent_table.setMinimumHeight(120)
+        recent_lay.addWidget(self._recent_table)
+
+        self._recent_empty = QLabel(strings.SCRCPY_RECENT_EMPTY, recent_card)
+        self._recent_empty.setProperty("muted", "true")
+        self._recent_empty.setAlignment(Qt.AlignCenter)
+        recent_lay.addWidget(self._recent_empty)
+        self._recent_table.hide()
+
+        lay.addWidget(recent_card, 1)
         return page
 
     def _build_install_page(self) -> QWidget:
@@ -367,11 +412,101 @@ class ScrcpyModule(IModule):
         self._status.setText(
             strings.SCRCPY_MSG_LAUNCHING.format(serial=ctx.serial)
         )
+        flags_summary = self._format_flags(argv)
         ok = self._adb.spawn_process(pid, argv, env=env)
         if ok:
             self._status.setText(strings.SCRCPY_MSG_LAUNCHED)
+            self._record_launch(
+                pid=pid,
+                device=ctx.model or ctx.serial,
+                flags=flags_summary,
+                status=strings.SCRCPY_RECENT_STATUS_RUNNING,
+            )
         else:
             self._status.setText(strings.SCRCPY_MSG_LAUNCH_FAILED)
+            self._record_launch(
+                pid=None,
+                device=ctx.model or ctx.serial,
+                flags=flags_summary,
+                status=strings.SCRCPY_RECENT_STATUS_FAIL,
+            )
+
+    @staticmethod
+    def _format_flags(argv: list) -> str:
+        """Compact human summary of scrcpy launch flags (skip binary + -s serial)."""
+        parts: list[str] = []
+        i = 3
+        while i < len(argv):
+            tok = argv[i]
+            if tok == "--video-bit-rate" and i + 1 < len(argv):
+                parts.append(argv[i + 1])
+                i += 2
+                continue
+            if tok == "--max-size" and i + 1 < len(argv):
+                parts.append(f"{argv[i + 1]}px")
+                i += 2
+                continue
+            if tok.startswith("--capture-orientation="):
+                parts.append(f"rot={tok.split('=', 1)[1]}")
+            elif tok == "--stay-awake":
+                parts.append("stay-awake")
+            elif tok == "--show-touches":
+                parts.append("show-touches")
+            elif tok == "--turn-screen-off":
+                parts.append("screen-off")
+            i += 1
+        return " · ".join(parts) if parts else "default"
+
+    # ------------------------------------------------------ Recent launches
+    def _record_launch(
+        self,
+        pid: Optional[str],
+        device: str,
+        flags: str,
+        status: str,
+    ) -> None:
+        ts = time.strftime("%H:%M:%S")
+        row_data = {"time": ts, "device": device, "flags": flags, "status": status}
+        self._recent.appendleft(row_data)
+        self._rebuild_recent_table()
+        if pid is not None:
+            # Track newest row (index 0) for this pid.
+            self._pid_to_row[pid] = id(row_data)
+            row_data["_id"] = id(row_data)
+
+    def _rebuild_recent_table(self) -> None:
+        table = self._recent_table
+        table.setRowCount(0)
+        if not self._recent:
+            table.hide()
+            self._recent_empty.show()
+            return
+        self._recent_empty.hide()
+        table.show()
+        for row, data in enumerate(self._recent):
+            table.insertRow(row)
+            for col, key in enumerate(("time", "device", "flags", "status")):
+                item = QTableWidgetItem(data.get(key, ""))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                table.setItem(row, col, item)
+
+    @Slot(str, int)
+    def _on_process_stopped(self, pid: str, returncode: int) -> None:
+        if not pid.startswith("scrcpy-"):
+            return
+        row_id = self._pid_to_row.pop(pid, None)
+        if row_id is None:
+            return
+        new_status = (
+            strings.SCRCPY_RECENT_STATUS_OK
+            if returncode == 0
+            else strings.SCRCPY_RECENT_STATUS_FAIL
+        )
+        for data in self._recent:
+            if data.get("_id") == row_id:
+                data["status"] = new_status
+                break
+        self._rebuild_recent_table()
 
 
 # --- helpers -------------------------------------------------------------

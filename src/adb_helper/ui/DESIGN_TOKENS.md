@@ -29,9 +29,9 @@ Compact density (`data-density="compact"`) drops the three text-* sizes to 12 / 
 
 | Token                | Hex / function                          | sRGB precomputed | Use                                                                  |
 | -------------------- | --------------------------------------- | ---------------- | -------------------------------------------------------------------- |
-| `--bg`               | `#0b0d10`                               | —                | App background, table body, terminal screen background               |
-| `--bg-elev`          | `#111418`                               | —                | Titlebar, sidebar, status bar, table headers, terminal input row     |
-| `--surface`          | `#161a1f`                               | —                | Cards, inputs, dropzones, screenshot frame inner                     |
+| `--bg`               | `#05070a`                               | —                | App background, table body, terminal screen background               |
+| `--bg-elev`          | `#0d1117`                               | —                | Titlebar, sidebar, status bar, table headers, terminal input row     |
+| `--surface`          | `#181d24`                               | —                | Cards, inputs, dropzones, screenshot frame inner                     |
 | `--surface-2`        | `#1c2128`                               | —                | Buttons, hover row backgrounds, segmented control                    |
 | `--surface-3`        | `#232932`                               | —                | Scrollbar thumb, pill badges                                         |
 | `--border`           | `#1f242b`                               | —                | Section dividers, card borders                                       |
@@ -63,7 +63,7 @@ Overrides only the surface/text/shadow tokens (accent and status colours are sha
 
 | Token                | Hex                |
 | -------------------- | ------------------ |
-| `--bg`               | `#f6f7f8`          |
+| `--bg`               | `#e6e9ee`          |
 | `--bg-elev`          | `#ffffff`          |
 | `--surface`          | `#ffffff`          |
 | `--surface-2`        | `#f1f3f5`          |
@@ -104,11 +104,11 @@ See the spec for the full role mapping (black, red, green, yellow, blue, magenta
 | Token                   | Value  | Use                                |
 | ----------------------- | ------ | ---------------------------------- |
 | `--sidebar-w`           | 220 px | Expanded sidebar                   |
-| `--sidebar-w-collapsed` | 56 px  | Collapsed sidebar (icon-only)      |
+| `--sidebar-w-collapsed` | 64 px  | Collapsed sidebar (icon-only)      |
 | `--titlebar-h`          | 38 px  | Custom titlebar height (prototype only — see notes) |
 | `--statusbar-h`         | 28 px  | Bottom status bar                  |
 
-Window: default 1280 × 800, minimum 960 × 600 (Spec §2.1). Sidebar collapses to icon-only when window width drops below 1280 px.
+Window: default 1280 × 800, minimum 960 × 600 (Spec §2.1). Sidebar collapses to icon-only when window width drops below 1100 px (Redesign v1.0).
 
 ## Component patterns
 

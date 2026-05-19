@@ -1,8 +1,8 @@
 """Sidebar widget — data-driven nav from ModuleRegistry (Spec §2.1, §8).
 
-Collapsed ~56 px (icon only) / expanded ~220 px (icon + label). Auto-collapses
-when the parent window is narrower than 1280 px. Active item highlighted via
-the ``active`` Qt property (styled in QSS).
+Collapsed 64 px (icon only) / expanded 220 px (icon + label). Auto-collapses
+when the parent window is narrower than 1100 px (Redesign v1.0). Active item
+highlighted via the ``active`` Qt property (styled in QSS).
 """
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ from PySide6.QtWidgets import (
 from ..core.registry import ModuleRegistry
 
 SIDEBAR_W_EXPANDED = 220
-SIDEBAR_W_COLLAPSED = 56
-COLLAPSE_THRESHOLD = 1280
+SIDEBAR_W_COLLAPSED = 64
+COLLAPSE_THRESHOLD = 1100
 
 _ICON_INACTIVE = "#4a525b"
 _ICON_ACTIVE = "#2ec5c5"

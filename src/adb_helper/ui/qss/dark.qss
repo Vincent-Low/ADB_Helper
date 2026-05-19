@@ -1,31 +1,29 @@
-/* Dark theme — generated from DESIGN_TOKENS.md.
- * OKLCH values precomputed to sRGB hex per the porting note in DESIGN_TOKENS.md.
+/* Dark theme — generated from design-export/DESIGN_TOKENS.json (Redesign v1.0).
+ * Dev-tool aesthetic: high contrast, no shadows, crisp 1px borders.
  *
  * Token map (dark):
- *   --bg                 #0b0d10
- *   --bg-elev            #111418
- *   --surface            #161a1f
- *   --surface-2          #1c2128
- *   --surface-3          #232932
+ *   --bg                 #05070a   (very dark)
+ *   --bg-elev            #0d1117   (titlebar, sidebar, headers)
+ *   --surface            #181d24   (card bodies)
+ *   --surface-2          #1c2128   (buttons, hover)
+ *   --surface-3          #232932   (scrollbar, secondary)
  *   --border             #1f242b
  *   --border-strong      #2a3038
  *   --text-primary       #e6e8eb
  *   --text-secondary     #9aa3ad
  *   --text-muted         #5f6873
- *   --accent             oklch(0.78 0.13 180) -> #2ec5c5
- *   --accent-soft        15% alpha             -> rgba(46,197,197,38)
- *   --accent-faint        8% alpha             -> rgba(46,197,197,20)
- *   --success            oklch(0.74 0.16 145) -> #2eb872
- *   --warn               oklch(0.78 0.15 75)  -> #d4a017
- *   --danger             oklch(0.68 0.20 25)  -> #d94c3a
- *   --danger-faint       10% alpha             -> rgba(217,76,58,26)
- *   --danger-border      40% alpha             -> rgba(217,76,58,102)
+ *   --accent             #2ec5c5
+ *   --accent-soft        rgba(46,197,197,38)
+ *   --accent-faint       rgba(46,197,197,20)
+ *   --success            #2eb872
+ *   --warn               #d4a017
+ *   --danger             #d94c3a
  */
 
 /* ========== Base ========== */
 QMainWindow,
 QWidget#appCentral {
-    background-color: #0b0d10;
+    background-color: #05070a;
     color: #e6e8eb;
     font-size: 13px;
 }
@@ -101,11 +99,11 @@ QPushButton:hover {
     color: #ffffff;
 }
 QPushButton:pressed {
-    background-color: #161a1f;
+    background-color: #181d24;
 }
 QPushButton:disabled {
     color: #5f6873;
-    background-color: #161a1f;
+    background-color: #181d24;
     border-color: #1f242b;
 }
 
@@ -144,7 +142,7 @@ QPushButton[variant="destructive"]:pressed {
 }
 QPushButton[variant="destructive"]:disabled {
     color: #5f6873;
-    background-color: #161a1f;
+    background-color: #181d24;
     border-color: #1f242b;
 }
 
@@ -168,7 +166,7 @@ QPushButton[size="sm"] {
 
 /* ========== Inputs ========== */
 QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
     border: 1px solid #2a3038;
     border-radius: 4px;
@@ -195,7 +193,7 @@ QTextEdit:focus, QPlainTextEdit:focus {
 }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     color: #5f6873;
-    background-color: #111418;
+    background-color: #0d1117;
     border-color: #1f242b;
 }
 
@@ -211,7 +209,7 @@ QSpinBox::up-button:hover, QSpinBox::down-button:hover {
 
 /* ========== ComboBox ========== */
 QComboBox {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
     border: 1px solid #2a3038;
     border-radius: 4px;
@@ -231,7 +229,7 @@ QComboBox::drop-down {
     subcontrol-position: top right;
 }
 QComboBox QAbstractItemView {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
     border: 1px solid #2a3038;
     selection-background-color: rgba(46, 197, 197, 38);
@@ -251,7 +249,7 @@ QCheckBox::indicator {
     height: 14px;
     border: 1px solid #2a3038;
     border-radius: 3px;
-    background-color: #161a1f;
+    background-color: #181d24;
 }
 QCheckBox::indicator:hover {
     border-color: #2ec5c5;
@@ -274,7 +272,7 @@ QRadioButton {
 QRadioButton::indicator {
     width: 14px; height: 14px; border-radius: 7px;
     border: 1px solid #2a3038;
-    background: #161a1f;
+    background: #181d24;
 }
 QRadioButton::indicator:checked {
     background: #2ec5c5;
@@ -283,9 +281,9 @@ QRadioButton::indicator:checked {
 
 /* ========== Tables / Lists / Trees ========== */
 QAbstractItemView {
-    background-color: #0b0d10;
+    background-color: #05070a;
     color: #e6e8eb;
-    alternate-background-color: #111418;
+    alternate-background-color: #0d1117;
     border: 1px solid #1f242b;
     gridline-color: #1f242b;
     selection-background-color: rgba(46, 197, 197, 20);
@@ -310,7 +308,7 @@ QAbstractItemView::item:selected:active {
 }
 
 QTableView, QTableWidget {
-    background-color: #0b0d10;
+    background-color: #05070a;
     gridline-color: #1f242b;
     border: 1px solid #1f242b;
 }
@@ -319,21 +317,21 @@ QTableView::item, QTableWidget::item {
 }
 
 QListView, QListWidget {
-    background-color: #0b0d10;
+    background-color: #05070a;
     border: 1px solid #1f242b;
     border-radius: 4px;
 }
 
 QTreeView, QTreeWidget {
-    background-color: #0b0d10;
+    background-color: #05070a;
     border: 1px solid #1f242b;
 }
 QTreeView::branch {
-    background: #0b0d10;
+    background: #05070a;
 }
 
 QHeaderView::section {
-    background-color: #111418;
+    background-color: #0d1117;
     color: #5f6873;
     border: none;
     border-right: 1px solid #1f242b;
@@ -345,7 +343,7 @@ QHeaderView::section {
 }
 QHeaderView::section:last { border-right: none; }
 QTableCornerButton::section {
-    background-color: #111418;
+    background-color: #0d1117;
     border: none;
     border-right: 1px solid #1f242b;
     border-bottom: 1px solid #1f242b;
@@ -410,7 +408,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 /* ========== Tabs ========== */
 QTabWidget::pane {
     border: 1px solid #1f242b;
-    background-color: #0b0d10;
+    background-color: #05070a;
     top: -1px;
 }
 QTabBar { background: transparent; }
@@ -433,7 +431,7 @@ QTabBar::tab:hover:!selected {
 
 /* ========== GroupBox (used as Card) ========== */
 QGroupBox {
-    background-color: #161a1f;
+    background-color: #181d24;
     border: 1px solid #1f242b;
     border-radius: 6px;
     margin-top: 18px;
@@ -447,7 +445,7 @@ QGroupBox::title {
     subcontrol-position: top left;
     left: 12px;
     padding: 0 6px;
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #9aa3ad;
     font-size: 12px;
     font-weight: 600;
@@ -457,18 +455,18 @@ QGroupBox::title {
 
 /* ========== Dialog / Modal ========== */
 QDialog {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
     border: 1px solid #2a3038;
 }
 QDialog QLabel { color: #9aa3ad; }
 QMessageBox {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
 }
 
 QMenu {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
     border: 1px solid #2a3038;
     padding: 4px;
@@ -488,7 +486,7 @@ QMenu::separator {
 }
 
 QMenuBar {
-    background-color: #111418;
+    background-color: #0d1117;
     color: #e6e8eb;
     border-bottom: 1px solid #1f242b;
 }
@@ -496,7 +494,7 @@ QMenuBar::item { padding: 6px 10px; background: transparent; }
 QMenuBar::item:selected { background-color: #1c2128; }
 
 QToolBar {
-    background-color: #111418;
+    background-color: #0d1117;
     border: none;
     spacing: 4px;
     padding: 4px;
@@ -504,7 +502,7 @@ QToolBar {
 
 /* ========== StatusBar ========== */
 QStatusBar {
-    background-color: #111418;
+    background-color: #0d1117;
     color: #9aa3ad;
     border-top: 1px solid #1f242b;
     font-size: 11px;
@@ -531,7 +529,7 @@ QSplitter::handle:vertical   { height: 1px; }
 
 /* ========== Sidebar ========== */
 QWidget#appSidebar {
-    background-color: #111418;
+    background-color: #0d1117;
     border-right: 1px solid #1f242b;
 }
 QPushButton#sidebarItem {
@@ -547,7 +545,7 @@ QPushButton#sidebarItem {
     font-weight: 500;
 }
 QPushButton#sidebarItem:hover {
-    background-color: #161a1f;
+    background-color: #181d24;
     color: #e6e8eb;
 }
 QPushButton#sidebarItem[active="true"] {
@@ -564,6 +562,6 @@ QWidget#deviceButtonsGrid QPushButton {
 
 /* ========== Macro Panel (Terminal right pane) ========== */
 QWidget#macroPanel {
-    background-color: #111418;
+    background-color: #0d1117;
     border-left: 1px solid #1f242b;
 }

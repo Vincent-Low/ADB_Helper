@@ -17,16 +17,22 @@ from __future__ import annotations
 import subprocess
 import time
 import uuid
+from collections import deque
 from pathlib import Path
-from typing import Optional
+from typing import Deque, Optional
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QGridLayout,
+    QGroupBox,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +52,7 @@ _KEYEVENT_TIMEOUT_S = 10
 _REBOOT_TIMEOUT_S = 15
 _PULL_TIMEOUT_S = 30
 _SHELL_TIMEOUT_S = 15
+_RECENT_MAX = 15
 
 # (label_key, keyevent) — Reboot/Screenshot/Screen Rotate are special-cased.
 _KEYEVENT_BUTTONS = (
@@ -73,6 +80,9 @@ class DeviceButtonsModule(IModule):
         self._screencap_meta: dict[str, dict] = {}
         # cmd_id -> dict (for screen rotate get/put + screencap fallback)
         self._pending: dict[str, dict] = {}
+        # cmd_id -> recent-entry-id (so finished/failed updates the right row).
+        self._cmd_to_recent: dict[str, int] = {}
+        self._recent: Deque[dict] = deque(maxlen=_RECENT_MAX)
         self._build_ui()
         self._wire_signals()
         self._sync_enabled(self._adb.active_device)
@@ -121,7 +131,41 @@ class DeviceButtonsModule(IModule):
         idx += 1
 
         root.addWidget(grid_widget)
-        root.addStretch(1)
+
+        # Recent actions card (Redesign v1.0).
+        recent_card = QGroupBox(strings.DB_RECENT_TITLE, self)
+        recent_lay = QVBoxLayout(recent_card)
+        recent_lay.setContentsMargins(8, 8, 8, 8)
+        recent_lay.setSpacing(6)
+
+        self._recent_table = QTableWidget(0, 4, recent_card)
+        self._recent_table.setHorizontalHeaderLabels([
+            strings.DB_RECENT_COL_TIME,
+            strings.DB_RECENT_COL_ACTION,
+            strings.DB_RECENT_COL_DEVICE,
+            strings.DB_RECENT_COL_RESULT,
+        ])
+        self._recent_table.verticalHeader().setVisible(False)
+        self._recent_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._recent_table.setSelectionMode(QAbstractItemView.NoSelection)
+        self._recent_table.setFocusPolicy(Qt.NoFocus)
+        self._recent_table.setShowGrid(False)
+        self._recent_table.setAlternatingRowColors(True)
+        header = self._recent_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self._recent_table.setMinimumHeight(140)
+        recent_lay.addWidget(self._recent_table)
+
+        self._recent_empty = QLabel(strings.DB_RECENT_EMPTY, recent_card)
+        self._recent_empty.setProperty("muted", "true")
+        self._recent_empty.setAlignment(Qt.AlignCenter)
+        recent_lay.addWidget(self._recent_empty)
+        self._recent_table.hide()
+
+        root.addWidget(recent_card, 1)
 
     def _wire_signals(self) -> None:
         self._adb.activeDeviceChanged.connect(self._sync_enabled)
@@ -166,12 +210,21 @@ class DeviceButtonsModule(IModule):
         serial = self._active_serial()
         if not serial:
             return
-        self._adb.commands.submit(
+        cmd_id = self._adb.commands.submit(
             serial,
             ["shell", "input", "keyevent", keycode],
             _KEYEVENT_TIMEOUT_S,
             Priority.HIGH,
         )
+        label = self._label_for_keycode(keycode)
+        self._record_action(cmd_id, label, serial)
+
+    @staticmethod
+    def _label_for_keycode(keycode: str) -> str:
+        for label_key, kc in _KEYEVENT_BUTTONS:
+            if kc == keycode:
+                return getattr(strings, label_key)
+        return keycode
 
     # ---------------------------------------------------------------- Reboot
     def _on_reboot(self) -> None:
@@ -187,12 +240,13 @@ class DeviceButtonsModule(IModule):
         )
         if ans != QMessageBox.StandardButton.Yes:
             return
-        self._adb.commands.submit(
+        cmd_id = self._adb.commands.submit(
             serial,
             ["reboot"],
             _REBOOT_TIMEOUT_S,
             Priority.HIGH,
         )
+        self._record_action(cmd_id, strings.DB_LABEL_REBOOT, serial)
 
     # ------------------------------------------------------------ Screenshot
     def _on_screenshot(self) -> None:
@@ -203,11 +257,13 @@ class DeviceButtonsModule(IModule):
         dest = self._screenshot_dest()
         self._screencap_buffers[pid] = bytearray()
         self._screencap_meta[pid] = {"serial": serial, "dest": dest}
+        recent_id = self._record_action(None, strings.DB_LABEL_SCREENSHOT, serial)
+        self._screencap_meta[pid]["recent_id"] = recent_id
         ok = self._adb.spawn_adb(pid, serial, ["exec-out", "screencap", "-p"])
         if not ok:
             self._screencap_buffers.pop(pid, None)
             self._screencap_meta.pop(pid, None)
-            self._screenshot_fallback(serial)
+            self._screenshot_fallback(serial, recent_id=recent_id)
 
     def _screenshot_dest(self) -> Path:
         folder = Path(SettingsManager.instance().get(
@@ -235,6 +291,7 @@ class DeviceButtonsModule(IModule):
         meta = self._screencap_meta.pop(pid, {})
         dest: Path = meta.get("dest")  # type: ignore[assignment]
         serial: str = meta.get("serial", "")  # type: ignore[assignment]
+        recent_id = meta.get("recent_id")
 
         if returncode == 0 and buf.startswith(_PNG_MAGIC) and dest is not None:
             try:
@@ -242,17 +299,19 @@ class DeviceButtonsModule(IModule):
             except OSError as exc:
                 _log.error("screenshot write failed: %s", exc)
                 self._show_status(strings.DB_MSG_SCREENSHOT_FAILED.format(error=str(exc)))
+                self._finalize_recent(recent_id, success=False)
                 return
             self._notify_screenshot(dest)
+            self._finalize_recent(recent_id, success=True)
             return
 
         _log.info(
             "exec-out screencap fallback rc=%s bytes=%d", returncode, len(buf)
         )
         if serial:
-            self._screenshot_fallback(serial)
+            self._screenshot_fallback(serial, recent_id=recent_id)
 
-    def _screenshot_fallback(self, serial: str) -> None:
+    def _screenshot_fallback(self, serial: str, recent_id: Optional[int] = None) -> None:
         """Older devices: ``screencap`` → ``adb pull`` → ``adb shell rm``."""
         ts = time.strftime("%Y%m%d_%H%M%S")
         remote = f"/sdcard/adb_helper_screenshot_{ts}.png"
@@ -266,7 +325,10 @@ class DeviceButtonsModule(IModule):
             "kind": "screencap_to_sdcard",
             "serial": serial,
             "remote": remote,
+            "recent_id": recent_id,
         }
+        if recent_id is not None:
+            self._cmd_to_recent[cmd_id] = recent_id
 
     def _notify_screenshot(self, dest: Path) -> None:
         box = QMessageBox(self)
@@ -300,23 +362,37 @@ class DeviceButtonsModule(IModule):
             Priority.HIGH,
         )
         self._pending[cmd_id] = {"kind": "rotate_get", "serial": serial}
+        self._record_action(cmd_id, strings.DB_LABEL_SCREEN_ROTATE, serial)
 
     # ----------------------------------------------------- Command callbacks
     @Slot(str, object)
     def _on_cmd_finished(self, cmd_id: str, result: object) -> None:
         info = self._pending.pop(cmd_id, None)
+        recent_id = self._cmd_to_recent.pop(cmd_id, None)
         if info is None:
+            # Simple one-shot command (key event, reboot) — just finalize.
+            if recent_id is not None:
+                self._finalize_recent(recent_id, success=True)
             return
-        self._handle_cmd(info, result, success=True)
+        self._handle_cmd(info, result, success=True, recent_id=recent_id)
 
     @Slot(str, object)
     def _on_cmd_failed(self, cmd_id: str, result: object) -> None:
         info = self._pending.pop(cmd_id, None)
+        recent_id = self._cmd_to_recent.pop(cmd_id, None)
         if info is None:
+            if recent_id is not None:
+                self._finalize_recent(recent_id, success=False)
             return
-        self._handle_cmd(info, result, success=False)
+        self._handle_cmd(info, result, success=False, recent_id=recent_id)
 
-    def _handle_cmd(self, info: dict, result: object, success: bool) -> None:
+    def _handle_cmd(
+        self,
+        info: dict,
+        result: object,
+        success: bool,
+        recent_id: Optional[int] = None,
+    ) -> None:
         kind = info.get("kind")
         stdout = (getattr(result, "stdout", "") or "").strip()
         stderr = (getattr(result, "stderr", "") or "").strip()
@@ -327,6 +403,7 @@ class DeviceButtonsModule(IModule):
                 self._show_status(
                     strings.DB_MSG_ROTATION_FAILED.format(error=stderr or "rc!=0")
                 )
+                self._finalize_recent(recent_id, success=False)
                 return
             current = stdout.strip()
             new_val = "0" if current == "1" else "1"
@@ -344,6 +421,8 @@ class DeviceButtonsModule(IModule):
                 "serial": serial,
                 "value": new_val,
             }
+            if recent_id is not None:
+                self._cmd_to_recent[cmd_id] = recent_id
             return
 
         if kind == "rotate_set":
@@ -355,6 +434,7 @@ class DeviceButtonsModule(IModule):
                 self._show_status(
                     strings.DB_MSG_ROTATION_FAILED.format(error=stderr or "rc!=0")
                 )
+            self._finalize_recent(recent_id, success=success)
             return
 
         if kind == "screencap_to_sdcard":
@@ -362,6 +442,7 @@ class DeviceButtonsModule(IModule):
                 self._show_status(
                     strings.DB_MSG_SCREENSHOT_FAILED.format(error=stderr or "rc!=0")
                 )
+                self._finalize_recent(recent_id, success=False)
                 return
             dest = self._screenshot_dest()
             remote = info.get("remote", "")
@@ -377,6 +458,8 @@ class DeviceButtonsModule(IModule):
                 "remote": remote,
                 "dest": dest,
             }
+            if recent_id is not None:
+                self._cmd_to_recent[cmd_id] = recent_id
             return
 
         if kind == "screencap_pull":
@@ -389,17 +472,73 @@ class DeviceButtonsModule(IModule):
                 _SHELL_TIMEOUT_S,
                 Priority.NORMAL,
             )
-            if success and dest is not None and dest.exists():
+            ok = success and dest is not None and dest.exists()
+            if ok:
                 self._notify_screenshot(dest)
             else:
                 self._show_status(
                     strings.DB_MSG_SCREENSHOT_FAILED.format(error=stderr or "pull failed")
                 )
+            self._finalize_recent(recent_id, success=ok)
             return
 
     # ------------------------------------------------------------ Status bar
     def _show_status(self, text: str) -> None:
         self._status.setText(text)
+
+    # ------------------------------------------------------- Recent actions
+    def _record_action(
+        self,
+        cmd_id: Optional[str],
+        action: str,
+        serial: str,
+    ) -> int:
+        """Insert pending row at top; return entry id for later finalize."""
+        ctx = self._adb.active_device
+        device_label = ctx.model if ctx and ctx.serial == serial and ctx.model else serial
+        entry = {
+            "time": time.strftime("%H:%M:%S"),
+            "action": action,
+            "device": device_label,
+            "result": "…",
+            "_id": None,
+        }
+        entry["_id"] = id(entry)
+        self._recent.appendleft(entry)
+        self._rebuild_recent_table()
+        if cmd_id is not None:
+            self._cmd_to_recent[cmd_id] = entry["_id"]
+        return entry["_id"]
+
+    def _finalize_recent(self, recent_id: Optional[int], success: bool) -> None:
+        if recent_id is None:
+            return
+        text = (
+            strings.DB_RECENT_RESULT_OK
+            if success
+            else strings.DB_RECENT_RESULT_FAIL
+        )
+        for entry in self._recent:
+            if entry.get("_id") == recent_id:
+                entry["result"] = text
+                break
+        self._rebuild_recent_table()
+
+    def _rebuild_recent_table(self) -> None:
+        table = self._recent_table
+        table.setRowCount(0)
+        if not self._recent:
+            table.hide()
+            self._recent_empty.show()
+            return
+        self._recent_empty.hide()
+        table.show()
+        for row, data in enumerate(self._recent):
+            table.insertRow(row)
+            for col, key in enumerate(("time", "action", "device", "result")):
+                item = QTableWidgetItem(data.get(key, ""))
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                table.setItem(row, col, item)
 
 
 __all__ = ["DeviceButtonsModule"]

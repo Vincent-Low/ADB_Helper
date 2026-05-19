@@ -1,8 +1,8 @@
-/* Light theme — generated from DESIGN_TOKENS.md.
+/* Light theme — generated from design-export/DESIGN_TOKENS.json (Redesign v1.0).
  * Surface/text tokens override the dark theme; accent + status colours are shared.
  *
  * Token map (light):
- *   --bg                 #f6f7f8
+ *   --bg                 #e6e9ee
  *   --bg-elev            #ffffff
  *   --surface            #ffffff
  *   --surface-2          #f1f3f5
@@ -23,7 +23,7 @@
 /* ========== Base ========== */
 QMainWindow,
 QWidget#appCentral {
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
     color: #14181c;
     font-size: 13px;
 }
@@ -183,7 +183,7 @@ QPlainTextEdit#terminal-output {
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
 QTextEdit:focus, QPlainTextEdit:focus {
     border-color: #2ec5c5;
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
 }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {
     color: #8993a0;
@@ -214,7 +214,7 @@ QComboBox {
 QComboBox:hover { border-color: #2ec5c5; }
 QComboBox:focus {
     border-color: #2ec5c5;
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
 }
 QComboBox::drop-down {
     border: none;
@@ -276,7 +276,7 @@ QRadioButton::indicator:checked {
 QAbstractItemView {
     background-color: #ffffff;
     color: #14181c;
-    alternate-background-color: #f6f7f8;
+    alternate-background-color: #e6e9ee;
     border: 1px solid #e3e6ea;
     gridline-color: #e3e6ea;
     selection-background-color: rgba(46, 197, 197, 30);
@@ -322,7 +322,7 @@ QTreeView, QTreeWidget {
 QTreeView::branch { background: #ffffff; }
 
 QHeaderView::section {
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
     color: #8993a0;
     border: none;
     border-right: 1px solid #e3e6ea;
@@ -334,7 +334,7 @@ QHeaderView::section {
 }
 QHeaderView::section:last { border-right: none; }
 QTableCornerButton::section {
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
     border: none;
     border-right: 1px solid #e3e6ea;
     border-bottom: 1px solid #e3e6ea;
@@ -399,7 +399,7 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 /* ========== Tabs ========== */
 QTabWidget::pane {
     border: 1px solid #e3e6ea;
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
     top: -1px;
 }
 QTabBar { background: transparent; }
@@ -505,7 +505,7 @@ QStatusBar QLabel { color: #4a525b; font-size: 11px; }
 /* ========== ToolTip ========== */
 QToolTip {
     background-color: #14181c;
-    color: #f6f7f8;
+    color: #e6e9ee;
     border: 1px solid #d2d7dd;
     padding: 4px 8px;
     font-size: 11px;
@@ -553,6 +553,6 @@ QWidget#deviceButtonsGrid QPushButton {
 
 /* ========== Macro Panel (Terminal right pane) ========== */
 QWidget#macroPanel {
-    background-color: #f6f7f8;
+    background-color: #e6e9ee;
     border-left: 1px solid #e3e6ea;
 }
