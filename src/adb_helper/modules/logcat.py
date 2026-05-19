@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -113,24 +112,21 @@ class LogcatModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
-        # --- Export Logcat Buffer card -----------------------------------
-        buffer_card = QGroupBox(strings.LOG_TITLE_BUFFER, self)
-        buffer_lay = QHBoxLayout(buffer_card)
-        buffer_lay.setSpacing(16)
+        # Top-level two-column split
+        h_split = QHBoxLayout()
+        h_split.setSpacing(14)
 
-        # Left column: description + command preview + action row
-        left = QWidget(buffer_card)
-        left_lay = QVBoxLayout(left)
-        left_lay.setContentsMargins(0, 0, 0, 0)
+        # --- Left column: export area + recent list ----------------------
+        left_lay = QVBoxLayout()
         left_lay.setSpacing(10)
 
-        self._desc_lbl = QLabel(strings.LOG_HINT_DESC, left)
+        self._desc_lbl = QLabel(strings.LOG_HINT_DESC, self)
         self._desc_lbl.setWordWrap(True)
         self._desc_lbl.setProperty("secondary", "true")
         self._desc_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_lay.addWidget(self._desc_lbl)
 
-        self._cmd_preview = QLabel("", left)
+        self._cmd_preview = QLabel("", self)
         self._cmd_preview.setObjectName("logcatCmdPreview")
         self._cmd_preview.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._cmd_preview.setWordWrap(True)
@@ -148,40 +144,56 @@ class LogcatModule(IModule):
 
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
-        self._export_btn = QPushButton(strings.LOG_BTN_EXPORT, left)
+        self._export_btn = QPushButton(strings.LOG_BTN_EXPORT, self)
         _set_variant(self._export_btn, "primary")
         self._export_btn.setEnabled(False)
         self._export_btn.setMinimumHeight(36)
         self._export_btn.clicked.connect(self._on_export)
         action_row.addWidget(self._export_btn, 1)
 
-        self._open_folder_btn = QPushButton(strings.DB_BTN_OPEN_FOLDER, left)
+        self._open_folder_btn = QPushButton(strings.DB_BTN_OPEN_FOLDER, self)
         self._open_folder_btn.clicked.connect(self._on_open_folder)
         action_row.addWidget(self._open_folder_btn, 0)
         left_lay.addLayout(action_row)
 
-        self._progress = QProgressBar(left)
+        self._progress = QProgressBar(self)
         self._progress.setRange(0, 0)
         self._progress.setVisible(False)
         left_lay.addWidget(self._progress)
 
-        self._status_lbl = QLabel("", left)
+        self._status_lbl = QLabel("", self)
         self._status_lbl.setProperty("secondary", "true")
         self._status_lbl.setWordWrap(True)
         self._status_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_lay.addWidget(self._status_lbl)
 
-        left_lay.addStretch(1)
-        buffer_lay.addWidget(left, 1)
+        recent_hdr = QHBoxLayout()
+        recent_title = QLabel(strings.LOG_TITLE_RECENT, self)
+        recent_title.setProperty("muted", "true")
+        recent_hdr.addWidget(recent_title, 0)
+        self._recent_count_lbl = QLabel("", self)
+        self._recent_count_lbl.setProperty("secondary", "true")
+        recent_hdr.addWidget(self._recent_count_lbl, 1)
+        left_lay.addLayout(recent_hdr)
 
-        # Right column: configuration panel
-        right = QFrame(buffer_card)
-        right.setFrameShape(QFrame.Shape.StyledPanel)
-        right_lay = QVBoxLayout(right)
-        right_lay.setContentsMargins(10, 8, 10, 8)
+        self._recent_list = QListWidget(self)
+        self._recent_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._recent_list.customContextMenuRequested.connect(self._on_recent_context_menu)
+        self._recent_list.itemDoubleClicked.connect(self._on_recent_open)
+        self._recent_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        left_lay.addWidget(self._recent_list, 1)
+
+        h_split.addLayout(left_lay, 1)
+
+        # --- Right column: configuration panel (fixed 280 px) ------------
+        right_panel = QFrame(self)
+        right_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        right_panel.setFixedWidth(280)
+        right_lay = QVBoxLayout(right_panel)
+        right_lay.setContentsMargins(12, 10, 12, 10)
         right_lay.setSpacing(6)
 
-        cfg_title = QLabel(strings.LOG_TITLE_CONFIG, right)
+        cfg_title = QLabel(strings.LOG_TITLE_CONFIG, right_panel)
         cfg_title.setProperty("muted", "true")
         right_lay.addWidget(cfg_title)
 
@@ -192,7 +204,7 @@ class LogcatModule(IModule):
         cfg_form.setVerticalSpacing(4)
 
         sm = SettingsManager.instance()
-        self._folder_value = QLineEdit(right)
+        self._folder_value = QLineEdit(right_panel)
         self._folder_value.setReadOnly(True)
         self._folder_value.setText(str(sm.get("logcat_folder", str(paths.logcat_dir()))))
         self._folder_value.setCursorPosition(0)
@@ -200,50 +212,30 @@ class LogcatModule(IModule):
         folder_row = QHBoxLayout()
         folder_row.setSpacing(6)
         folder_row.addWidget(self._folder_value, 1)
-        self._browse_btn = QPushButton(strings.LOG_BTN_BROWSE, right)
+        self._browse_btn = QPushButton(strings.LOG_BTN_BROWSE, right_panel)
         self._browse_btn.clicked.connect(self._on_browse_folder)
         folder_row.addWidget(self._browse_btn, 0)
-        folder_wrap = QWidget(right)
+        folder_wrap = QWidget(right_panel)
         folder_wrap.setLayout(folder_row)
-        cfg_form.addRow(QLabel(strings.LOG_LABEL_SAVE_FOLDER, right), folder_wrap)
+        cfg_form.addRow(QLabel(strings.LOG_LABEL_SAVE_FOLDER, right_panel), folder_wrap)
 
-        filename_val = QLabel(strings.LOG_VAL_FILENAME_PATTERN, right)
+        filename_val = QLabel(strings.LOG_VAL_FILENAME_PATTERN, right_panel)
         filename_val.setWordWrap(True)
         filename_val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        cfg_form.addRow(QLabel(strings.LOG_LABEL_FILENAME, right), filename_val)
+        cfg_form.addRow(QLabel(strings.LOG_LABEL_FILENAME, right_panel), filename_val)
 
-        mode_val = QLabel(strings.LOG_VAL_MODE, right)
+        mode_val = QLabel(strings.LOG_VAL_MODE, right_panel)
         mode_val.setWordWrap(True)
-        cfg_form.addRow(QLabel(strings.LOG_LABEL_MODE, right), mode_val)
+        cfg_form.addRow(QLabel(strings.LOG_LABEL_MODE, right_panel), mode_val)
 
-        self._tz_val = QLabel(self._current_tz_label(), right)
-        cfg_form.addRow(QLabel(strings.LOG_LABEL_TIMEZONE, right), self._tz_val)
+        self._tz_val = QLabel(self._current_tz_label(), right_panel)
+        cfg_form.addRow(QLabel(strings.LOG_LABEL_TIMEZONE, right_panel), self._tz_val)
 
         right_lay.addLayout(cfg_form)
         right_lay.addStretch(1)
-        buffer_lay.addWidget(right, 1)
 
-        root.addWidget(buffer_card)
-
-        # --- Recent Exports card -----------------------------------------
-        recent_card = QGroupBox(strings.LOG_TITLE_RECENT, self)
-        recent_lay = QVBoxLayout(recent_card)
-        recent_lay.setSpacing(6)
-
-        header_row = QHBoxLayout()
-        self._recent_count_lbl = QLabel("", recent_card)
-        self._recent_count_lbl.setProperty("secondary", "true")
-        header_row.addWidget(self._recent_count_lbl, 1)
-        recent_lay.addLayout(header_row)
-
-        self._recent_list = QListWidget(recent_card)
-        self._recent_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._recent_list.customContextMenuRequested.connect(self._on_recent_context_menu)
-        self._recent_list.itemDoubleClicked.connect(self._on_recent_open)
-        self._recent_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        recent_lay.addWidget(self._recent_list, 1)
-
-        root.addWidget(recent_card, 1)
+        h_split.addWidget(right_panel)
+        root.addLayout(h_split, 1)
 
         self._refresh_cmd_preview(None)
         self._load_recent()

@@ -556,6 +556,12 @@ QPushButton#sidebarItem[active="true"] {
     border-left: 2px solid #2ec5c5;
 }
 
+/* ========== Device Buttons grid ========== */
+QWidget#deviceButtonsGrid QPushButton {
+    min-height: 48px;
+    font-size: 13px;
+}
+
 /* ========== Macro Panel (Terminal right pane) ========== */
 QWidget#macroPanel {
     background-color: #111418;

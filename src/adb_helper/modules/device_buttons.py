@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -87,12 +88,15 @@ class DeviceButtonsModule(IModule):
         self._status.setProperty("secondary", "true")
         root.addWidget(self._status)
 
-        grid = QGridLayout()
+        grid_widget = QWidget(self)
+        grid_widget.setObjectName("deviceButtonsGrid")
+        grid_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        grid = QGridLayout(grid_widget)
         grid.setSpacing(10)
         cols = 4
 
         def _add(label: str, slot, row: int, col: int) -> QPushButton:
-            btn = QPushButton(label, self)
+            btn = QPushButton(label, grid_widget)
             btn.setMinimumHeight(48)
             btn.setMinimumWidth(120)
             btn.clicked.connect(slot)
@@ -116,7 +120,7 @@ class DeviceButtonsModule(IModule):
              idx // cols, idx % cols)
         idx += 1
 
-        root.addLayout(grid)
+        root.addWidget(grid_widget)
         root.addStretch(1)
 
     def _wire_signals(self) -> None:

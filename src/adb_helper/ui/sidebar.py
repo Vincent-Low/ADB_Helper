@@ -59,6 +59,7 @@ class Sidebar(QWidget):
 
         self._collapsed: bool = False
         self._buttons: Dict[str, QPushButton] = {}
+        self._icon_names: Dict[str, str] = {}
         self._active_id: Optional[str] = None
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -70,6 +71,7 @@ class Sidebar(QWidget):
         for desc in registry.get_all():
             btn = self._build_button(desc.id, desc.label, desc.icon_name)
             self._buttons[desc.id] = btn
+            self._icon_names[desc.id] = desc.icon_name
             self._group.addButton(btn)
             layout.addWidget(btn)
             btn.clicked.connect(lambda _checked=False, mid=desc.id: self._on_clicked(mid))
@@ -89,6 +91,11 @@ class Sidebar(QWidget):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
             btn.update()
+            icon_name = self._icon_names.get(mid, "")
+            colour = _ICON_ACTIVE if active else _ICON_INACTIVE
+            icon = self._load_svg_icon(icon_name, colour)
+            if icon is not None:
+                btn.setIcon(icon)
 
     def update_for_window_width(self, width: int) -> None:
         collapsed = width < COLLAPSE_THRESHOLD
@@ -119,8 +126,8 @@ class Sidebar(QWidget):
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         return btn
 
-    def _load_svg_icon(self, name: str) -> Optional[QIcon]:
-        """Load SVG from assets/icons/, build a dual-state QIcon (normal+selected)."""
+    def _load_svg_icon(self, name: str, colour: Optional[str] = None) -> Optional[QIcon]:
+        """Load SVG from assets/icons/ with a single flat colour."""
         root = pathlib.Path(__file__).resolve().parent.parent.parent.parent
         svg_path = root / "assets" / "icons" / f"{name}.svg"
         if not svg_path.exists():
@@ -129,22 +136,15 @@ class Sidebar(QWidget):
             svg_text = svg_path.read_text(encoding="utf-8")
         except OSError:
             return None
-        icon = QIcon()
-        for state_colour, mode, state in (
-            (_ICON_INACTIVE, QIcon.Mode.Normal,   QIcon.State.Off),
-            (_ICON_ACTIVE,   QIcon.Mode.Selected, QIcon.State.On),
-            (_ICON_ACTIVE,   QIcon.Mode.Active,   QIcon.State.On),
-            (_ICON_ACTIVE,   QIcon.Mode.Normal,   QIcon.State.On),
-        ):
-            data = svg_text.replace("currentColor", state_colour).encode("utf-8")
-            renderer = QSvgRenderer(data)
-            pix = QPixmap(20, 20)
-            pix.fill(Qt.transparent)
-            painter = QPainter(pix)
-            renderer.render(painter)
-            painter.end()
-            icon.addPixmap(pix, mode, state)
-        return icon
+        fill = colour if colour is not None else _ICON_INACTIVE
+        data = svg_text.replace("currentColor", fill).encode("utf-8")
+        renderer = QSvgRenderer(data)
+        pix = QPixmap(20, 20)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pix)
 
     def _apply_button_mode(self, btn: QPushButton, mid: str) -> None:
         if self._collapsed:
