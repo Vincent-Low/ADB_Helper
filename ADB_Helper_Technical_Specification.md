@@ -99,6 +99,11 @@ Stored data directories:
 
 The SQLite database carries a `user_version` pragma that encodes the schema version as an integer (e.g., 1, 2, 3…). On every application startup the service layer reads the current `user_version` and applies any pending migrations in order before the UI initialises. Each migration is an idempotent SQL script stored in the source tree under `db/migrations/`.
 
+Current schema version: **2**. Migrations applied:
+
+- `0001_initial.sql` — creates `command_history`, `macros`, `paired_devices` tables (schema v1).
+- `0002_paired_connect_port.sql` — adds `connect_port INTEGER` column to `paired_devices` (schema v2).
+
 `settings.json` carries a `"schema_version"` integer key. On startup, if the version is lower than expected, the application merges missing keys with their defaults and writes the updated file. Unknown keys from a future version are preserved (forward-compatible read).
 
 ### 1.7 Single-Instance Enforcement
@@ -220,13 +225,12 @@ For Android 10 and earlier, or when the new pairing mechanism is unavailable:
 - User enters IP address, pairing port, and 6-digit PIN in ADB_Helper.
 - User clicks **Pair**. Application runs `adb pair <ip>:<pairing_port> <pin>`.
 - The PIN is masked in all log output (replaced with `*****`).
-- On successful pairing, the application automatically runs `adb connect <ip>:5555`.
-- On success the device appears in the device list. On failure, the raw ADB error is shown.
-- The paired device record (IP, alias) is saved to the database. On next launch the record is shown in a Paired Devices list; the user manually selects which device to connect to.
+- On successful pairing, the paired device record (IP, alias, connection port) is saved to the database and the Paired Devices list refreshes. No automatic post-pair connect is attempted — the user sets the connection port in the Paired Devices list and clicks **Connect** there.
+- On failure, the raw ADB error is shown.
 
 #### 3.1.5 Paired Devices List
 
-A persistent list below the live device list shows previously paired Wi-Fi devices (stored in SQLite). Columns: **Alias** (editable), **IP Address**, **Last Connected**. Actions: **Connect** (runs `adb connect <ip>:5555`), **Forget** (removes from DB). The list is informational only — no automatic reconnection on startup.
+A persistent list below the live device list shows previously paired Wi-Fi devices (stored in SQLite). Columns: **Alias** (editable inline), **IP Address**, **Connection Port** (editable inline; the port used for `adb connect`, distinct from the pairing port), **Last Connected**. Actions: **Connect** (runs `adb connect <ip>:<connection_port>`; port value is saved back to the database on each connect), **Forget** (removes from DB). The list is informational only — no automatic reconnection on startup.
 
 #### 3.1.6 Disconnect
 
@@ -752,3 +756,11 @@ The following are explicitly **not** implemented in version 1.0:
 - Android App Bundle (`.aab`) installation.
 - App icon extraction in the Apps module.
 - Automatic reconnection of paired Wi-Fi devices on startup.
+
+---
+
+## Revision History
+
+| Version | Date       | Changes                                                                                                                                                                                               |
+| ------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0.0   | 2026-05-19 | All nine modules fully implemented. DB schema v2 (`connect_port` on paired_devices). §3.1.4 corrected: no auto-connect after pairing. §3.1.5 updated: Paired Devices table has Connection Port column. |

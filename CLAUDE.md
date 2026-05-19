@@ -14,13 +14,24 @@ These rules are load-bearing. Any change that breaks one of them is wrong even i
 
 ## Repository state
 
-The scaffold exists: `src/adb_helper/{core,modules,ui}`, `db/migrations/`, `assets/fonts/`, `tests/`, `main.py`, `pyproject.toml`. Module files are stubs — every module's `QWidget` body is `pass`. No real ADB calls are wired up yet. The technical spec and design handoff (see below) are the source of truth for what each stub becomes.
+**v1.0.0 is fully implemented.** All modules are complete — no stubs remain.
 
-- `ADB_Helper_Technical_Specification.md` — the full functional/technical spec for the application to be built.
-- `adb-helper_handoff_Claude_Design/project/` — an HTML/CSS/JS design prototype exported from Claude Design. It is a visual reference, **not** the target implementation.
-- `src/adb_helper/ui/DESIGN_TOKENS.md` — extracted design tokens (colours, spacing, typography) for QSS generation.
+Structure:
 
-There are no build, lint, or test commands wired up yet. Do not invent commands the user has not authorised.
+- `src/adb_helper/core/` — ADB service layer, DB manager, settings manager, single-instance, downloader, logger, strings, platform shims, IModule interface, registry, device context/monitor, error parser, PTY session.
+- `src/adb_helper/modules/` — all nine modules fully implemented: `connections`, `terminal`, `installer`, `scrcpy`, `device_buttons`, `device_info`, `apps`, `logcat`, `settings`.
+- `src/adb_helper/ui/` — main window, sidebar, status bar, theme manager, terminal widget + palette, style utilities.
+- `db/migrations/` — `0001_initial.sql` (schema v1: command_history, macros, paired_devices), `0002_paired_connect_port.sql` (schema v2: adds `connect_port` to paired_devices).
+- `adb_helper.spec` — PyInstaller onedir build spec.
+- `assets/fonts/` — bundled JetBrains Mono (Linux terminal font).
+
+Reference documents (normative):
+
+- `ADB_Helper_Technical_Specification.md` — full functional/technical spec.
+- `adb-helper_handoff_Claude_Design/project/` — HTML/CSS/JS design prototype (visual reference only, **not** the implementation target).
+- `src/adb_helper/ui/DESIGN_TOKENS.md` — extracted design tokens for QSS generation.
+
+Build: `pip install -e ".[build]" && pyinstaller adb_helper.spec`. No test runner is wired up; do not invent commands the user has not authorised.
 
 ## What is being built
 

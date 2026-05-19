@@ -1,6 +1,6 @@
 # ADB_Helper
 
-Desktop GUI for managing Android devices over ADB. Connects, inspects, installs APKs, mirrors screens via scrcpy, tails logcat, and manages apps — all from a single PySide6 window. Designed for daily personal use on Windows 11 and Ubuntu 22.04+. macOS is not supported.
+**v1.0.0** — Desktop GUI for managing Android devices over ADB. Connects, inspects, installs APKs, mirrors screens via scrcpy, exports logcat, and manages apps — all from a single PySide6 window. Designed for daily personal use on Windows 11 and Ubuntu 22.04+. macOS is not supported.
 
 ---
 
