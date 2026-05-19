@@ -162,22 +162,25 @@ class DatabaseManager:
     def get_paired_devices(self) -> List[Any]:
         with self._lock:
             cur = self._conn.execute(
-                "SELECT ip, alias, last_connected FROM paired_devices "
+                "SELECT ip, alias, last_connected, connect_port FROM paired_devices "
                 "ORDER BY (last_connected IS NULL), last_connected DESC, ip"
             )
             rows = cur.fetchall()
         return [
-            {"ip": r[0], "alias": r[1], "last_connected": r[2]}
+            {"ip": r[0], "alias": r[1], "last_connected": r[2], "connect_port": r[3]}
             for r in rows
         ]
 
-    def save_paired_device(self, ip: str, alias: str) -> None:
+    def save_paired_device(
+        self, ip: str, alias: str, connect_port: Optional[int] = None
+    ) -> None:
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO paired_devices(ip, alias, last_connected) "
-                "VALUES(?, ?, NULL) "
-                "ON CONFLICT(ip) DO UPDATE SET alias=excluded.alias",
-                (ip, alias),
+                "INSERT INTO paired_devices(ip, alias, last_connected, connect_port) "
+                "VALUES(?, ?, NULL, ?) "
+                "ON CONFLICT(ip) DO UPDATE SET alias=excluded.alias, "
+                "connect_port=COALESCE(excluded.connect_port, paired_devices.connect_port)",
+                (ip, alias, connect_port),
             )
 
     def delete_paired_device(self, ip: str) -> None:

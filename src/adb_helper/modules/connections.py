@@ -52,7 +52,8 @@ _COL_STATUS = 3
 # Paired device table columns.
 _PCOL_ALIAS = 0
 _PCOL_IP = 1
-_PCOL_LAST = 2
+_PCOL_PORT = 2
+_PCOL_LAST = 3
 
 _CONNECT_TIMEOUT_S = 15
 _PAIR_TIMEOUT_S = 20
@@ -191,14 +192,20 @@ class ConnectionsModule(IModule):
         row.addWidget(self._wp_ip, 2)
 
         row.addWidget(QLabel(strings.FIELD_PAIRING_PORT, g))
-        self._wp_port = QSpinBox(g)
-        self._wp_port.setRange(1, 65535)
-        self._wp_port.setValue(37000)
+        self._wp_port = QLineEdit(g)
+        self._wp_port.setPlaceholderText("44331")
+        self._wp_port.setMaxLength(5)
+        self._wp_port.setValidator(
+            QRegularExpressionValidator(
+                QRegularExpression(r"^\d{1,5}$"), self._wp_port
+            )
+        )
+        self._wp_port.setFixedWidth(80)
         row.addWidget(self._wp_port, 0)
 
         row.addWidget(QLabel(strings.FIELD_PIN, g))
         self._wp_pin = QLineEdit(g)
-        self._wp_pin.setEchoMode(QLineEdit.Password)
+        self._wp_pin.setEchoMode(QLineEdit.Normal)
         self._wp_pin.setMaxLength(6)
         self._wp_pin.setPlaceholderText(strings.HINT_PIN)
         self._wp_pin.setValidator(
@@ -223,17 +230,23 @@ class ConnectionsModule(IModule):
         g = QGroupBox(strings.LABEL_PAIRED_DEVICES, self)
         lay = QVBoxLayout(g)
 
-        self._paired_table = QTableWidget(0, 3, g)
+        self._paired_table = QTableWidget(0, 4, g)
         self._paired_table.setHorizontalHeaderLabels(
-            [strings.COL_ALIAS, strings.COL_IP_ADDRESS, strings.COL_LAST_CONNECTED]
+            [
+                strings.COL_ALIAS,
+                strings.COL_IP_ADDRESS,
+                strings.COL_CONNECTION_PORT,
+                strings.COL_LAST_CONNECTED,
+            ]
         )
         self._paired_table.verticalHeader().setVisible(False)
         self._paired_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._paired_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self._paired_table.horizontalHeader().setStretchLastSection(True)
-        self._paired_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents
-        )
+        self._paired_table.verticalHeader().setDefaultSectionSize(34)
+        hdr = self._paired_table.horizontalHeader()
+        hdr.setStretchLastSection(True)
+        hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self._paired_table.setColumnWidth(_PCOL_PORT, 110)
         lay.addWidget(self._paired_table)
 
         actions = QHBoxLayout()
@@ -481,12 +494,17 @@ class ConnectionsModule(IModule):
         if not _valid_ip(ip):
             self._wp_status.setText(strings.MSG_INVALID_IP)
             return
-        port = int(self._wp_port.value())
+        port_text = self._wp_port.text().strip()
+        if not port_text.isdigit() or not (1 <= int(port_text) <= 65535):
+                self._wp_status.setText(strings.MSG_INVALID_PORT)
+                return
+        port = int(port_text)
         pin = self._wp_pin.text().strip()
         if len(pin) != 6 or not pin.isdigit():
             self._wp_status.setText(strings.MSG_INVALID_PIN)
             return
         target = f"{ip}:{port}"
+        _log.info("pairing device target=%s", target)
         self._wp_status.setText(strings.MSG_PAIRING)
         self._wp_pair_btn.setEnabled(False)
         # Logger filter masks the 6-digit PIN because the command argv contains
@@ -505,24 +523,13 @@ class ConnectionsModule(IModule):
         self._wp_pin.clear()
 
     def _after_pair_success(self, ip: str) -> None:
+        _log.info("pair succeeded ip=%s, saving to paired devices", ip)
         if self._db is not None:
             try:
                 self._db.save_paired_device(ip, strings.ALIAS_DEFAULT)
             except Exception as exc:
                 _log.warning("save_paired_device failed: %s", exc)
         self._refresh_paired_table()
-        target = f"{ip}:5555"
-        cmd_id = self._adb.commands.submit(
-            None,
-            ["connect", target],
-            _CONNECT_TIMEOUT_S,
-            Priority.HIGH,
-        )
-        self._pending[cmd_id] = {
-            "kind": "connect_after_pair",
-            "ip": ip,
-            "target": target,
-        }
 
     # ------------------------------------------------------------------
     # Paired devices table
@@ -541,25 +548,66 @@ class ConnectionsModule(IModule):
             for r in rows:
                 row = self._paired_table.rowCount()
                 self._paired_table.insertRow(row)
+
                 alias_item = QTableWidgetItem(r.get("alias") or "")
                 alias_item.setFlags(alias_item.flags() | Qt.ItemIsEditable)
+
                 ip_item = QTableWidgetItem(r.get("ip") or "")
                 ip_item.setFlags(ip_item.flags() & ~Qt.ItemIsEditable)
+                ip_item.setData(Qt.UserRole, r.get("ip") or "")
+
                 last_item = QTableWidgetItem(r.get("last_connected") or "")
                 last_item.setFlags(last_item.flags() & ~Qt.ItemIsEditable)
-                ip_item.setData(Qt.UserRole, r.get("ip") or "")
+
                 self._paired_table.setItem(row, _PCOL_ALIAS, alias_item)
                 self._paired_table.setItem(row, _PCOL_IP, ip_item)
                 self._paired_table.setItem(row, _PCOL_LAST, last_item)
+
+                port_edit = QLineEdit()
+                port_edit.setFrame(False)
+                port_edit.setMaximumHeight(28)
+                port_edit.setPlaceholderText("40787")
+                port_edit.setMaxLength(5)
+                port_edit.setValidator(
+                    QRegularExpressionValidator(
+                        QRegularExpression(r"^\d{0,5}$"), port_edit
+                    )
+                )
+                port_edit.setStyleSheet(
+                    "QLineEdit {"
+                    "  background: transparent;"
+                    "  padding: 0px 4px;"
+                    "}"
+                    "QLineEdit:focus {"
+                    "  background: palette(base);"
+                    "  border: 1px solid palette(highlight);"
+                    "  border-radius: 2px;"
+                    "}"
+                )
+                stored_port = r.get("connect_port")
+                if stored_port is not None:
+                    port_edit.setText(str(stored_port))
+                port_edit.textChanged.connect(self._update_connect_btn_state)
+                self._paired_table.setCellWidget(row, _PCOL_PORT, port_edit)
         finally:
             self._loading_paired = False
-        self._on_paired_selection_changed()
+        self._update_connect_btn_state()
 
     def _on_paired_selection_changed(self) -> None:
         row = self._current_paired_row()
-        enabled = row >= 0
-        self._paired_connect_btn.setEnabled(enabled)
-        self._paired_forget_btn.setEnabled(enabled)
+        self._paired_forget_btn.setEnabled(row >= 0)
+        self._update_connect_btn_state()
+
+    def _update_connect_btn_state(self) -> None:
+        row = self._current_paired_row()
+        if row < 0:
+            self._paired_connect_btn.setEnabled(False)
+            return
+        edit = self._port_edit_for_row(row)
+        port_text = edit.text().strip() if edit is not None else ""
+        self._paired_connect_btn.setEnabled(
+            len(port_text) == 5 and port_text.isdigit()
+        )
 
     def _current_paired_row(self) -> int:
         sel = self._paired_table.selectionModel()
@@ -574,6 +622,10 @@ class ConnectionsModule(IModule):
             return ""
         ip = item.data(Qt.UserRole)
         return str(ip) if ip else ""
+
+    def _port_edit_for_row(self, row: int) -> Optional[QLineEdit]:
+        w = self._paired_table.cellWidget(row, _PCOL_PORT)
+        return w if isinstance(w, QLineEdit) else None
 
     def _on_paired_item_changed(self, item: QTableWidgetItem) -> None:
         if self._loading_paired:
@@ -596,7 +648,12 @@ class ConnectionsModule(IModule):
         ip = self._paired_ip_for_row(row)
         if not ip:
             return
-        target = f"{ip}:5555"
+        edit = self._port_edit_for_row(row)
+        port_text = edit.text().strip() if edit is not None else ""
+        if len(port_text) != 5 or not port_text.isdigit():
+            return
+        target = f"{ip}:{port_text}"
+        _log.info("connecting paired device target=%s", target)
         cmd_id = self._adb.commands.submit(
             None,
             ["connect", target],
@@ -607,6 +664,7 @@ class ConnectionsModule(IModule):
             "kind": "connect_paired",
             "ip": ip,
             "target": target,
+            "connect_port": int(port_text),
         }
 
     def _on_paired_forget_clicked(self) -> None:
@@ -651,16 +709,20 @@ class ConnectionsModule(IModule):
 
         if kind == "connect_classic":
             self._wc_connect_btn.setEnabled(True)
+            target = info.get("target", "")
             if success:
+                _log.info("connect_classic succeeded target=%s", target)
                 self._wc_status.setText(
-                    strings.MSG_CONNECT_OK.format(target=info.get("target", ""))
+                    strings.MSG_CONNECT_OK.format(target=target)
                 )
             else:
                 human, raw = parse_error(combined)
                 self._wc_status.setText(
                     strings.MSG_CONNECT_FAIL.format(error=human)
                 )
-                _log.info("classic connect failed raw=%s", raw[:200])
+                _log.warning(
+                    "connect_classic failed target=%s raw=%s", target, raw[:200]
+                )
 
         elif kind == "pair":
             self._wp_pair_btn.setEnabled(True)
@@ -673,39 +735,33 @@ class ConnectionsModule(IModule):
                 self._wp_status.setText(
                     strings.MSG_PAIR_FAIL.format(error=human)
                 )
-                _log.info("pair failed raw=%s", raw[:200])
-
-        elif kind == "connect_after_pair":
-            ip = info.get("ip", "")
-            if success:
-                self._wp_status.setText(
-                    strings.MSG_CONNECT_OK.format(target=info.get("target", ""))
-                )
-                if self._db is not None:
-                    try:
-                        self._db.touch_paired_device(ip)
-                    except Exception as exc:
-                        _log.warning("touch_paired_device failed: %s", exc)
-                self._refresh_paired_table()
-            else:
-                human, _ = parse_error(combined)
-                self._wp_status.setText(
-                    strings.MSG_CONNECT_FAIL.format(error=human)
+                _log.warning(
+                    "pair failed target=%s raw=%s",
+                    info.get("pair_target", ""),
+                    raw[:200],
                 )
 
         elif kind == "connect_paired":
             ip = info.get("ip", "")
             target = info.get("target", "")
+            connect_port = info.get("connect_port")
             if success:
+                _log.info("connect_paired succeeded target=%s", target)
                 if self._db is not None:
                     try:
+                        self._db.save_paired_device(
+                            ip, strings.ALIAS_DEFAULT, connect_port
+                        )
                         self._db.touch_paired_device(ip)
                     except Exception as exc:
-                        _log.warning("touch_paired_device failed: %s", exc)
+                        _log.warning("db update failed after connect: %s", exc)
                 self._refresh_paired_table()
                 self._show_transient(strings.MSG_CONNECT_OK.format(target=target))
             else:
-                human, _ = parse_error(combined)
+                human, raw = parse_error(combined)
+                _log.warning(
+                    "connect_paired failed target=%s raw=%s", target, raw[:200]
+                )
                 self._show_transient(
                     strings.MSG_CONNECT_FAIL.format(error=human)
                 )
@@ -713,11 +769,15 @@ class ConnectionsModule(IModule):
         elif kind == "disconnect":
             serial = info.get("serial", "")
             if success:
+                _log.info("disconnect succeeded serial=%s", serial)
                 self._show_transient(
                     strings.MSG_DISCONNECT_OK.format(serial=serial)
                 )
             else:
-                human, _ = parse_error(combined)
+                human, raw = parse_error(combined)
+                _log.warning(
+                    "disconnect failed serial=%s raw=%s", serial, raw[:200]
+                )
                 self._show_transient(
                     strings.MSG_DISCONNECT_FAIL.format(error=human)
                 )

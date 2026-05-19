@@ -240,20 +240,24 @@ class InstallerModule(IModule):
         files_box = QGroupBox(strings.INSTALLER_LABEL_FILES, self)
         fb = QVBoxLayout(files_box)
         fb.setContentsMargins(12, 8, 12, 8)
-        self._files_table = QTableWidget(0, 3, self)
+        self._files_table = QTableWidget(0, 4, self)
         self._files_table.setHorizontalHeaderLabels([
+            "",
             strings.INSTALLER_COL_FILE,
             strings.INSTALLER_COL_TYPE,
             strings.INSTALLER_COL_SIZE,
         ])
         self._files_table.verticalHeader().setVisible(False)
         self._files_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._files_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._files_table.setDragDropMode(QAbstractItemView.InternalMove)
+        self._files_table.setSelectionMode(QAbstractItemView.NoSelection)
         self._files_table.horizontalHeader().setStretchLastSection(True)
         self._files_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeToContents
         )
+        self._files_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Fixed
+        )
+        self._files_table.setColumnWidth(0, 28)
         fb.addWidget(self._files_table, 1)
 
         file_actions = QHBoxLayout()
@@ -279,10 +283,16 @@ class InstallerModule(IModule):
         db.addWidget(self._devices_list, 1)
         root.addWidget(dev_box, 1)
 
-        # Run controls
+        # Installation controls
+        inst_box = QGroupBox(strings.INSTALLER_LABEL_INSTALLATION, self)
+        ib = QVBoxLayout(inst_box)
+        ib.setContentsMargins(12, 8, 12, 8)
+        ib.setSpacing(6)
+
         run_row = QHBoxLayout()
         self._install_btn = QPushButton(strings.INSTALLER_BTN_INSTALL, self)
         _set_variant(self._install_btn, "primary")
+        self._install_btn.setEnabled(False)
         self._install_btn.clicked.connect(self._on_install)
         self._cancel_btn = QPushButton(strings.INSTALLER_BTN_CANCEL, self)
         self._cancel_btn.clicked.connect(self._on_cancel)
@@ -293,11 +303,14 @@ class InstallerModule(IModule):
         self._status_lbl = QLabel("", self)
         self._status_lbl.setProperty("secondary", "true")
         run_row.addWidget(self._status_lbl)
-        root.addLayout(run_row)
+        ib.addLayout(run_row)
 
         self._progress = QProgressBar(self)
-        self._progress.setVisible(False)
-        root.addWidget(self._progress)
+        self._progress.setRange(0, 1)
+        self._progress.setValue(0)
+        ib.addWidget(self._progress)
+
+        root.addWidget(inst_box)
 
         # Live results table.
         res_box = QGroupBox(strings.INSTALLER_LABEL_RESULTS, self)
@@ -325,6 +338,8 @@ class InstallerModule(IModule):
         self._adb.devices.deviceStateChanged.connect(self._on_device_event)
         self._adb.processes.processOutput.connect(self._on_proc_output)
         self._adb.processes.processStopped.connect(self._on_proc_stopped)
+        self._files_table.itemChanged.connect(lambda _: self._update_install_btn())
+        self._devices_list.itemChanged.connect(lambda _: self._update_install_btn())
 
     # ------------------------ IModule lifecycle ------------------------
     def on_activate(self) -> None:
@@ -375,23 +390,35 @@ class InstallerModule(IModule):
         self._files.append(entry)
         row = self._files_table.rowCount()
         self._files_table.insertRow(row)
+        chk_item = QTableWidgetItem()
+        chk_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+        chk_item.setCheckState(Qt.Checked)
+        self._files_table.setItem(row, 0, chk_item)
         name_item = QTableWidgetItem(path.name)
         name_item.setData(Qt.UserRole, str(path))
-        self._files_table.setItem(row, 0, name_item)
-        self._files_table.setItem(row, 1, QTableWidgetItem(ext.lstrip(".")))
-        self._files_table.setItem(row, 2, QTableWidgetItem(_fmt_size(size)))
+        self._files_table.setItem(row, 1, name_item)
+        self._files_table.setItem(row, 2, QTableWidgetItem(ext.lstrip(".")))
+        self._files_table.setItem(row, 3, QTableWidgetItem(_fmt_size(size)))
 
     def _on_remove_file(self) -> None:
-        rows = sorted({i.row() for i in self._files_table.selectedIndexes()},
-                      reverse=True)
+        rows = sorted(
+            [
+                r for r in range(self._files_table.rowCount())
+                if (it := self._files_table.item(r, 0)) is not None
+                and it.checkState() == Qt.Checked
+            ],
+            reverse=True,
+        )
         for r in rows:
             self._files_table.removeRow(r)
             if 0 <= r < len(self._files):
                 del self._files[r]
+        self._update_install_btn()
 
     def _on_clear_files(self) -> None:
         self._files_table.setRowCount(0)
         self._files.clear()
+        self._update_install_btn()
 
     # -------------------------- Devices panel --------------------------
     def _refresh_devices(self) -> None:
@@ -414,6 +441,7 @@ class InstallerModule(IModule):
             )
             self._devices_list.addItem(item)
             self._serial_model[ctx.serial] = ctx.model or ""
+        self._update_install_btn()
 
     def _checked_serials(self) -> set[str]:
         out: set[str] = set()
@@ -422,6 +450,16 @@ class InstallerModule(IModule):
             if it.checkState() == Qt.Checked:
                 out.add(str(it.data(Qt.UserRole)))
         return out
+
+    def _update_install_btn(self) -> None:
+        if self._running_job is not None or self._queue:
+            return
+        has_files = any(
+            (it := self._files_table.item(r, 0)) is not None
+            and it.checkState() == Qt.Checked
+            for r in range(self._files_table.rowCount())
+        )
+        self._install_btn.setEnabled(has_files and bool(self._checked_serials()))
 
     @Slot(object)
     def _on_device_event(self, _ctx: DeviceContext) -> None:
@@ -449,7 +487,14 @@ class InstallerModule(IModule):
     def _on_install(self) -> None:
         if self._running_job is not None or self._queue:
             return
-        if not self._files:
+        files_to_install = [
+            self._files[r]
+            for r in range(self._files_table.rowCount())
+            if (it := self._files_table.item(r, 0)) is not None
+            and it.checkState() == Qt.Checked
+            and r < len(self._files)
+        ]
+        if not files_to_install:
             self._status_lbl.setText(strings.INSTALLER_MSG_NO_FILES)
             return
         devices = [
@@ -466,7 +511,7 @@ class InstallerModule(IModule):
 
         # Build the file × device queue (§3.3.3 sequential order).
         self._queue = []
-        for f in self._files:
+        for f in files_to_install:
             for d in devices:
                 self._queue.append(_Job(file_entry=f, device_entry=d))
 
@@ -482,7 +527,6 @@ class InstallerModule(IModule):
         self._remove_btn.setEnabled(False)
         self._clear_btn.setEnabled(False)
         self._cancel_btn.setEnabled(True)
-        self._progress.setVisible(True)
         self._progress.setRange(0, len(self._queue))
         self._progress.setValue(0)
         self._dispatch_next()
@@ -731,12 +775,13 @@ class InstallerModule(IModule):
         self._queue = []
         self._cancel_requested = False
         self._dropped_serials.clear()
-        self._install_btn.setEnabled(True)
+        self._update_install_btn()
         self._add_btn.setEnabled(True)
         self._remove_btn.setEnabled(True)
         self._clear_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
-        self._progress.setVisible(False)
+        self._progress.setRange(0, 1)
+        self._progress.setValue(0)
 
         ok = sum(1 for r in self._results_log if r.state == _RES_OK)
         fail = sum(1 for r in self._results_log if r.state != _RES_OK)

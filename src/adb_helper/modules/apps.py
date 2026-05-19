@@ -55,10 +55,9 @@ _PULL_TIMEOUT_S = 120
 _TOGGLE_TIMEOUT_S = 20
 
 _COL_CHECK = 0
-_COL_NAME = 1
-_COL_PACKAGE = 2
-_COL_STATUS = 3
-_COL_TYPE = 4
+_COL_PACKAGE = 1
+_COL_STATUS = 2
+_COL_TYPE = 3
 
 _ROLE_PACKAGE = Qt.ItemDataRole.UserRole + 1
 _ROLE_APK_PATH = Qt.ItemDataRole.UserRole + 2
@@ -125,9 +124,8 @@ class _AppsProxyModel(QSortFilterProxyModel):
         if status == _STATUS_DISABLED and not self._show_disabled:
             return False
         if self._needle:
-            name = (src.item(row, _COL_NAME).text() if src.item(row, _COL_NAME) else "").lower()
             pkg = (src.item(row, _COL_PACKAGE).text() if src.item(row, _COL_PACKAGE) else "").lower()
-            if self._needle not in name and self._needle not in pkg:
+            if self._needle not in pkg:
                 return False
         return True
 
@@ -217,10 +215,9 @@ class AppsModule(IModule):
         root.addLayout(filt)
 
         # --- Table ---------------------------------------------------------
-        self._table_model = QStandardItemModel(0, 5, self)
+        self._table_model = QStandardItemModel(0, 4, self)
         self._table_model.setHorizontalHeaderLabels([
             "",
-            strings.APPS_COL_NAME,
             strings.APPS_COL_PACKAGE,
             strings.APPS_COL_STATUS,
             strings.APPS_COL_TYPE,
@@ -241,7 +238,6 @@ class AppsModule(IModule):
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(_COL_CHECK, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(_COL_NAME, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(_COL_PACKAGE, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(_COL_STATUS, QHeaderView.ResizeMode.ResizeToContents)
         root.addWidget(self._table, 1)
@@ -458,8 +454,6 @@ class AppsModule(IModule):
         chk.setData(entry.apk_path, _ROLE_APK_PATH)
         chk.setData(entry.app_type, _ROLE_TYPE_RAW)
         chk.setData(entry.status, _ROLE_STATUS_RAW)
-        name_item = QStandardItem(entry.name or entry.package)
-        name_item.setEditable(False)
         pkg_item = QStandardItem(entry.package)
         pkg_item.setEditable(False)
         status_text = (
@@ -476,7 +470,7 @@ class AppsModule(IModule):
         )
         type_item = QStandardItem(type_text)
         type_item.setEditable(False)
-        self._table_model.appendRow([chk, name_item, pkg_item, status_item, type_item])
+        self._table_model.appendRow([chk, pkg_item, status_item, type_item])
         if entry.status == _STATUS_DISABLED:
             self._apply_row_disabled_style(self._table_model.rowCount() - 1, True)
 
@@ -501,9 +495,6 @@ class AppsModule(IModule):
         row = self._find_row(package)
         if entry is None or row < 0:
             return
-        name_item = self._table_model.item(row, _COL_NAME)
-        if name_item is not None:
-            name_item.setText(entry.name or entry.package)
         status_item = self._table_model.item(row, _COL_STATUS)
         if status_item is not None:
             status_item.setText(
@@ -518,7 +509,7 @@ class AppsModule(IModule):
 
     def _apply_row_disabled_style(self, row: int, disabled: bool) -> None:
         brush = QBrush(QColor(128, 128, 128)) if disabled else QBrush()
-        for col in (_COL_NAME, _COL_PACKAGE, _COL_STATUS, _COL_TYPE):
+        for col in (_COL_PACKAGE, _COL_STATUS, _COL_TYPE):
             it = self._table_model.item(row, col)
             if it is not None:
                 it.setForeground(brush)
@@ -625,7 +616,7 @@ class AppsModule(IModule):
             return
         box = QMessageBox(self)
         box.setWindowTitle(strings.APPS_TITLE_DELETE)
-        listing = "\n".join(f"• {e.name} ({e.package})" for e in users)
+        listing = "\n".join(f"• {e.package}" for e in users)
         box.setText(strings.INSTALL_BACKUP_PROMPT + "\n\n" + listing)
         backup_btn = box.addButton(
             strings.APPS_BTN_BACKUP_DELETE, QMessageBox.ButtonRole.AcceptRole
@@ -886,12 +877,12 @@ class AppsModule(IModule):
                 if entry.app_type == _TYPE_SYSTEM
                 else strings.APPS_TYPE_USER
             )
-            rows.append((entry.name or entry.package, entry.package, status, type_))
+            rows.append((entry.package, status, type_))
         try:
             with open(path, "w", encoding="utf-8-sig", newline="") as fh:
                 writer = csv.writer(fh)
                 writer.writerow([
-                    strings.APPS_COL_NAME, strings.APPS_COL_PACKAGE,
+                    strings.APPS_COL_PACKAGE,
                     strings.APPS_COL_STATUS, strings.APPS_COL_TYPE,
                 ])
                 writer.writerows(rows)
