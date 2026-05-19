@@ -238,13 +238,23 @@ class TerminalModule(IModule):
         self._reload_history()
         self._reload_macros()
         ctx = self._adb.active_device
+        current_serial = ctx.serial if ctx is not None else None
+        if self._is_pty_alive() and current_serial == self._active_serial:
+            self._term.focus_input()
+            return
         self._sync_session_for(ctx)
         self._term.focus_input()
 
     def on_deactivate(self) -> None:
         self._activated = False
         self._stop_playback(quiet=True)
-        self._close_session()
+        # PTY survives navigation away — only torn down on device change,
+        # disconnect, or app shutdown. Bug A1.
+
+    def _is_pty_alive(self) -> bool:
+        if self._pty is None:
+            return False
+        return self._pty.is_running()
 
     def on_device_changed(self, ctx: Optional[DeviceContext]) -> None:
         self._sync_session_for(ctx)

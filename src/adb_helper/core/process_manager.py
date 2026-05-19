@@ -70,6 +70,7 @@ class ProcessManager(QObject):
                 stdin=subprocess.PIPE,
                 env=env,
                 bufsize=0,
+                start_new_session=True,
             )
         except OSError as exc:
             _log.error("process spawn failed id=%s err=%s", id, exc)

@@ -353,6 +353,11 @@ class ScrcpyModule(IModule):
             argv += ["--turn-screen-off"]
 
         env = dict(os.environ)
+        # Forward display-server vars explicitly (Bug A2: scrcpy is a GUI app
+        # and dies silently if any of these are missing on Linux).
+        for var in ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"):
+            if var in os.environ:
+                env[var] = os.environ[var]
         env["ADB"] = resolve_adb_binary()
         # Bundled adb directory on PATH so any helper scrcpy spawns finds it.
         adb_dir = str(Path(env["ADB"]).parent)

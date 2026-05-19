@@ -366,6 +366,20 @@ LOG_HINT_DESC: Final = (
     "Capture the current device log (one-shot adb logcat -d) and save it "
     "to the configured logcat folder."
 )
+LOG_TITLE_BUFFER: Final = "Export Logcat Buffer"
+LOG_TITLE_CONFIG: Final = "Configuration"
+LOG_TITLE_RECENT: Final = "Recent Exports"
+LOG_LABEL_SAVE_FOLDER: Final = "Save folder:"
+LOG_LABEL_FILENAME: Final = "Filename:"
+LOG_LABEL_MODE: Final = "Mode:"
+LOG_LABEL_TIMEZONE: Final = "Timezone:"
+LOG_VAL_MODE: Final = "Single-shot (-d flag)"
+LOG_VAL_FILENAME_PATTERN: Final = "logcat_<date>_<time>_GMT±N.txt"
+LOG_BTN_BROWSE: Final = "Browse…"
+LOG_BTN_OPEN_FILE: Final = "Open"
+LOG_BTN_REMOVE: Final = "Remove"
+LOG_FILE_COUNT: Final = "{n} files"
+LOG_RECENT_EMPTY: Final = "No exports yet."
 
 # --- Installer module (Spec §3.3) ----------------------------------------
 INSTALLER_LABEL_FILES: Final = "Files to install"
