@@ -1,4 +1,4 @@
-"""Module: Scrcpy (Spec §3.4).
+"""Module: Scrcpy (Spec §3.4; Redesign §5.4).
 
 Launches scrcpy in its OWN top-level window as a separate process — never
 embedded. On first activation, if no scrcpy binary is present under
@@ -9,6 +9,13 @@ asset with SHA-256 verification, and extracts it.
 Process spawning goes through :meth:`AdbService.spawn_process` (which uses
 :class:`ProcessManager`) so scrcpy is terminated on app exit alongside any
 other managed children.
+
+Layout (Redesign §5.4): 2-column ``QGridLayout`` — Launch options card (form,
+col-stretch 1) on the left, Recent launches card (table, col-stretch 1.2)
+on the right. The "switches" toggles (stay-awake, show-touches,
+turn-screen-off) live on a single horizontal row inside the form. The
+Launch button sits in the page header (variant=primary); no duplicate
+exists inside the form.
 """
 from __future__ import annotations
 
@@ -29,7 +36,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
-    QGroupBox,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -48,6 +55,7 @@ from ..core.device_context import DeviceContext
 from ..core.downloader import AtomicDownloader
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import card, page_header
 from ..ui.style_utils import set_variant as _set_variant
 from ..core import platform as _platform
 
@@ -69,7 +77,7 @@ class _BinaryWorkerSignals(QObject):
 
 
 class ScrcpyModule(IModule):
-    """Scrcpy launch screen (§3.4)."""
+    """Scrcpy launch screen (§3.4; Redesign §5.4)."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -91,9 +99,23 @@ class ScrcpyModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
+        self._launch_btn = QPushButton(strings.SCRCPY_BTN_LAUNCH_PRIMARY, self)
+        _set_variant(self._launch_btn, "primary")
+        self._launch_btn.setEnabled(False)
+        self._launch_btn.clicked.connect(self._on_launch_clicked)
+
+        root.addWidget(
+            page_header(
+                strings.LABEL_SCRCPY,
+                strings.PAGE_SUBTITLE_SCRCPY,
+                actions=[self._launch_btn],
+                parent=self,
+            )
+        )
+
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
-        self._status.setProperty("secondary", "true")
+        self._status.setProperty("role", "hint")
         root.addWidget(self._status)
 
         self._stack = QStackedWidget(self)
@@ -104,13 +126,29 @@ class ScrcpyModule(IModule):
 
     def _build_launch_page(self) -> QWidget:
         page = QWidget(self)
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 0, 0, 0)
+        grid = QGridLayout(page)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        grid.setColumnStretch(0, 10)
+        grid.setColumnStretch(1, 12)
 
-        opts = QGroupBox(strings.SCRCPY_LABEL_LAUNCH_OPTIONS, page)
-        form = QFormLayout(opts)
+        grid.addWidget(self._build_options_card(page), 0, 0)
+        grid.addWidget(self._build_recent_card(page), 0, 1)
+        grid.setRowStretch(0, 1)
+        return page
 
-        self._bitrate = QComboBox(opts)
+    def _build_options_card(self, parent: QWidget) -> QWidget:
+        body = QWidget(parent)
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(12)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(10)
+
+        self._bitrate = QComboBox(body)
         for label, value in (
             (strings.SCRCPY_BITRATE_2, "2M"),
             (strings.SCRCPY_BITRATE_4, "4M"),
@@ -122,7 +160,7 @@ class ScrcpyModule(IModule):
         self._bitrate.setCurrentIndex(2)  # 8M default
         form.addRow(strings.SCRCPY_LABEL_BITRATE, self._bitrate)
 
-        self._max_res = QComboBox(opts)
+        self._max_res = QComboBox(body)
         self._max_res.addItem(strings.SCRCPY_RES_NONE, 0)
         for label, value in (
             (strings.SCRCPY_RES_1920, 1920),
@@ -133,7 +171,7 @@ class ScrcpyModule(IModule):
             self._max_res.addItem(label, value)
         form.addRow(strings.SCRCPY_LABEL_MAX_RES, self._max_res)
 
-        self._orientation = QComboBox(opts)
+        self._orientation = QComboBox(body)
         self._orientation.addItem(strings.SCRCPY_ORIENT_AUTO, None)
         for label, value in (
             (strings.SCRCPY_ORIENT_0, 0),
@@ -144,31 +182,33 @@ class ScrcpyModule(IModule):
             self._orientation.addItem(label, value)
         form.addRow(strings.SCRCPY_LABEL_ORIENTATION, self._orientation)
 
-        self._stay_awake = QCheckBox(strings.SCRCPY_LABEL_STAY_AWAKE, opts)
-        form.addRow("", self._stay_awake)
-        self._show_touches = QCheckBox(strings.SCRCPY_LABEL_SHOW_TOUCHES, opts)
-        form.addRow("", self._show_touches)
-        self._turn_screen_off = QCheckBox(strings.SCRCPY_LABEL_TURN_SCREEN_OFF, opts)
-        form.addRow("", self._turn_screen_off)
+        # Horizontal switches row — single row hosting all three checkboxes.
+        switches = QHBoxLayout()
+        switches.setContentsMargins(0, 0, 0, 0)
+        switches.setSpacing(14)
+        self._stay_awake = QCheckBox(strings.SCRCPY_LABEL_STAY_AWAKE, body)
+        self._show_touches = QCheckBox(strings.SCRCPY_LABEL_SHOW_TOUCHES, body)
+        self._turn_screen_off = QCheckBox(strings.SCRCPY_LABEL_TURN_SCREEN_OFF, body)
+        switches.addWidget(self._stay_awake)
+        switches.addWidget(self._show_touches)
+        switches.addWidget(self._turn_screen_off)
+        switches.addStretch(1)
+        switches_host = QWidget(body)
+        switches_host.setLayout(switches)
+        form.addRow("", switches_host)
 
-        lay.addWidget(opts)
+        body_lay.addLayout(form)
+        body_lay.addStretch(1)
 
-        actions = QHBoxLayout()
-        actions.addStretch(1)
-        self._launch_btn = QPushButton(strings.SCRCPY_BTN_LAUNCH, page)
-        _set_variant(self._launch_btn, "primary")
-        self._launch_btn.setEnabled(False)
-        self._launch_btn.clicked.connect(self._on_launch_clicked)
-        actions.addWidget(self._launch_btn)
-        lay.addLayout(actions)
+        return card(strings.SCRCPY_LABEL_LAUNCH_OPTIONS, body, parent=parent)
 
-        # Recent launches card (Redesign v1.0).
-        recent_card = QGroupBox(strings.SCRCPY_RECENT_TITLE, page)
-        recent_lay = QVBoxLayout(recent_card)
-        recent_lay.setContentsMargins(8, 8, 8, 8)
-        recent_lay.setSpacing(6)
+    def _build_recent_card(self, parent: QWidget) -> QWidget:
+        body = QWidget(parent)
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(8)
 
-        self._recent_table = QTableWidget(0, 4, recent_card)
+        self._recent_table = QTableWidget(0, 4, body)
         self._recent_table.setHorizontalHeaderLabels([
             strings.SCRCPY_RECENT_COL_TIME,
             strings.SCRCPY_RECENT_COL_DEVICE,
@@ -186,17 +226,16 @@ class ScrcpyModule(IModule):
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self._recent_table.setMinimumHeight(120)
-        recent_lay.addWidget(self._recent_table)
+        self._recent_table.setMinimumHeight(160)
+        body_lay.addWidget(self._recent_table, 1)
 
-        self._recent_empty = QLabel(strings.SCRCPY_RECENT_EMPTY, recent_card)
-        self._recent_empty.setProperty("muted", "true")
+        self._recent_empty = QLabel(strings.SCRCPY_RECENT_EMPTY, body)
+        self._recent_empty.setProperty("role", "hint")
         self._recent_empty.setAlignment(Qt.AlignCenter)
-        recent_lay.addWidget(self._recent_empty)
+        body_lay.addWidget(self._recent_empty)
         self._recent_table.hide()
 
-        lay.addWidget(recent_card, 1)
-        return page
+        return card(strings.SCRCPY_RECENT_TITLE, body, parent=parent)
 
     def _build_install_page(self) -> QWidget:
         page = QWidget(self)

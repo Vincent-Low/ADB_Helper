@@ -1,8 +1,18 @@
-"""Module: Installer (Spec §3.3).
+"""Module: Installer (Spec §3.3; Redesign §5.3).
 
 Independent of the global active device — maintains its own multi-device
 checklist. Installs ``.apk``, ``.apks``, ``.xapk``, and ``.apkm`` sequentially
 across N devices. ``.aab`` is unsupported (developer signing key required — §9).
+
+Layout (Redesign §5.3): 4 stacked cards (Files / Targets / Installation /
+Results) wrapped in a ``QScrollArea`` so the whole page scrolls — individual
+tables grow with their contents (``AdjustToContents`` + scroll-bar always
+off). The Installation card carries a primary ``Install`` button, ``Cancel``,
+a 6 px ``QProgressBar``, a percent label, and a state-driven
+``QFrame#InstallStatus`` row (``state="idle|running|done|error"``).
+
+Drop targets (handoff §5.3): the page accepts file drops; .apk / .apks /
+.xapk / .apkm files are added, .aab triggers the unsupported notice.
 
 Sequential semantics (§3.3.3):
   - File × device order: file 1 → dev A, file 1 → dev B, …, file 2 → dev A, …
@@ -15,8 +25,6 @@ All ADB I/O routes through :class:`AdbService`. ``.apks`` install spawns
 """
 from __future__ import annotations
 
-import json
-import os
 import shutil
 import tempfile
 import uuid
@@ -26,12 +34,13 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
+    QAbstractScrollArea,
     QDialog,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,6 +48,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -52,8 +62,8 @@ from ..core.device_context import DeviceContext
 from ..core.error_parser import parse as parse_error
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import card, page_header
 from ..ui.style_utils import set_variant as _set_variant
-from ..core import platform as _platform
 
 _log = get_logger(__name__)
 
@@ -205,7 +215,7 @@ def _result_text(r: _ResultEntry) -> str:
 # ----------------------------- module ---------------------------------
 
 class InstallerModule(IModule):
-    """Installer screen (§3.3)."""
+    """Installer screen (§3.3; Redesign §5.3)."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -225,22 +235,54 @@ class InstallerModule(IModule):
         # temp extraction dirs to clean up after the batch
         self._scratch_dirs: list[Path] = []
         self._cancel_requested = False
+        self._batch_total = 0
 
         self._build_ui()
         self._wire_signals()
         self._refresh_devices()
+        self._set_install_state("idle")
+        self.setAcceptDrops(True)
 
     # ----------------------------- UI ----------------------------------
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 14)
-        root.setSpacing(10)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 14, 18, 14)
+        outer.setSpacing(14)
 
-        # Files
-        files_box = QGroupBox(strings.INSTALLER_LABEL_FILES, self)
-        fb = QVBoxLayout(files_box)
-        fb.setContentsMargins(12, 8, 12, 8)
-        self._files_table = QTableWidget(0, 4, self)
+        outer.addWidget(
+            page_header(
+                strings.LABEL_INSTALLER,
+                strings.PAGE_SUBTITLE_INSTALLER,
+                parent=self,
+            )
+        )
+
+        scroll = QScrollArea(self)
+        scroll.setObjectName("installerScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        outer.addWidget(scroll, 1)
+
+        stack_host = QWidget(scroll)
+        stack = QVBoxLayout(stack_host)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(14)
+
+        stack.addWidget(self._build_files_card())
+        stack.addWidget(self._build_targets_card())
+        stack.addWidget(self._build_installation_card())
+        stack.addWidget(self._build_results_card())
+        stack.addStretch(1)
+
+        scroll.setWidget(stack_host)
+
+    def _build_files_card(self) -> QWidget:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        self._files_table = QTableWidget(0, 4)
         self._files_table.setHorizontalHeaderLabels([
             "",
             strings.INSTALLER_COL_FILE,
@@ -258,65 +300,119 @@ class InstallerModule(IModule):
             0, QHeaderView.Fixed
         )
         self._files_table.setColumnWidth(0, 28)
-        fb.addWidget(self._files_table, 1)
+        # Whole-page scrolling: table grows with content, no inner scroll bar.
+        self._files_table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+        self._files_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._files_table.setMinimumHeight(96)
+        body_lay.addWidget(self._files_table, 1)
+
+        self._files_empty = QLabel(strings.INSTALLER_EMPTY_FILES, body)
+        self._files_empty.setProperty("role", "hint")
+        self._files_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._files_empty.setMinimumHeight(96)
+        body_lay.addWidget(self._files_empty)
+        self._files_empty.setVisible(True)
+        self._files_table.setVisible(False)
 
         file_actions = QHBoxLayout()
-        self._add_btn = QPushButton(strings.INSTALLER_BTN_ADD_FILES, self)
+        self._add_btn = QPushButton(strings.INSTALLER_BTN_ADD_FILES, body)
         self._add_btn.clicked.connect(self._on_add_files)
-        self._remove_btn = QPushButton(strings.INSTALLER_BTN_REMOVE, self)
+        self._remove_btn = QPushButton(strings.INSTALLER_BTN_REMOVE, body)
         _set_variant(self._remove_btn, "destructive")
         self._remove_btn.clicked.connect(self._on_remove_file)
-        self._clear_btn = QPushButton(strings.INSTALLER_BTN_CLEAR, self)
+        self._clear_btn = QPushButton(strings.INSTALLER_BTN_CLEAR, body)
         self._clear_btn.clicked.connect(self._on_clear_files)
         for b in (self._add_btn, self._remove_btn, self._clear_btn):
             file_actions.addWidget(b)
         file_actions.addStretch(1)
-        fb.addLayout(file_actions)
-        root.addWidget(files_box, 2)
+        body_lay.addLayout(file_actions)
 
-        # Devices
-        dev_box = QGroupBox(strings.INSTALLER_LABEL_DEVICES, self)
-        db = QVBoxLayout(dev_box)
-        db.setContentsMargins(12, 8, 12, 8)
-        self._devices_list = QListWidget(self)
+        return card(strings.INSTALLER_LABEL_FILES, body, parent=self)
+
+    def _build_targets_card(self) -> QWidget:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        self._devices_list = QListWidget(body)
         self._devices_list.setSelectionMode(QAbstractItemView.NoSelection)
-        db.addWidget(self._devices_list, 1)
-        root.addWidget(dev_box, 1)
+        self._devices_list.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+        self._devices_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._devices_list.setMinimumHeight(96)
+        body_lay.addWidget(self._devices_list, 1)
 
-        # Installation controls
-        inst_box = QGroupBox(strings.INSTALLER_LABEL_INSTALLATION, self)
-        ib = QVBoxLayout(inst_box)
-        ib.setContentsMargins(12, 8, 12, 8)
-        ib.setSpacing(6)
+        self._devices_empty = QLabel(strings.INSTALLER_EMPTY_DEVICES, body)
+        self._devices_empty.setProperty("role", "hint")
+        self._devices_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._devices_empty.setMinimumHeight(96)
+        body_lay.addWidget(self._devices_empty)
+        self._devices_empty.setVisible(True)
+        self._devices_list.setVisible(False)
+
+        return card(strings.INSTALLER_LABEL_DEVICES, body, parent=self)
+
+    def _build_installation_card(self) -> QWidget:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
 
         run_row = QHBoxLayout()
-        self._install_btn = QPushButton(strings.INSTALLER_BTN_INSTALL, self)
+        run_row.setSpacing(10)
+        self._install_btn = QPushButton(strings.INSTALLER_BTN_INSTALL, body)
         _set_variant(self._install_btn, "primary")
         self._install_btn.setEnabled(False)
         self._install_btn.clicked.connect(self._on_install)
-        self._cancel_btn = QPushButton(strings.INSTALLER_BTN_CANCEL, self)
+        self._cancel_btn = QPushButton(strings.INSTALLER_BTN_CANCEL, body)
         self._cancel_btn.clicked.connect(self._on_cancel)
         self._cancel_btn.setEnabled(False)
         run_row.addWidget(self._install_btn)
         run_row.addWidget(self._cancel_btn)
-        run_row.addStretch(1)
-        self._status_lbl = QLabel("", self)
-        self._status_lbl.setProperty("secondary", "true")
-        run_row.addWidget(self._status_lbl)
-        ib.addLayout(run_row)
 
-        self._progress = QProgressBar(self)
+        self._progress = QProgressBar(body)
         self._progress.setRange(0, 1)
         self._progress.setValue(0)
-        ib.addWidget(self._progress)
+        self._progress.setTextVisible(False)
+        self._progress.setFixedHeight(6)
+        run_row.addWidget(self._progress, 1)
 
-        root.addWidget(inst_box)
+        self._pct_label = QLabel("0%", body)
+        self._pct_label.setMinimumWidth(40)
+        self._pct_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._pct_label.setFont(_mono_font(self._pct_label))
+        run_row.addWidget(self._pct_label)
+        body_lay.addLayout(run_row)
 
-        # Live results table.
-        res_box = QGroupBox(strings.INSTALLER_LABEL_RESULTS, self)
-        rb = QVBoxLayout(res_box)
-        rb.setContentsMargins(12, 8, 12, 8)
-        self._results_table = QTableWidget(0, 4, self)
+        # Install status row — QFrame#InstallStatus with semantic state property.
+        self._status_frame = QFrame(body)
+        self._status_frame.setObjectName("InstallStatus")
+        sf_row = QHBoxLayout(self._status_frame)
+        sf_row.setContentsMargins(10, 6, 10, 6)
+        sf_row.setSpacing(8)
+        self._status_dot = QLabel(self._status_frame)
+        self._status_dot.setObjectName("statusDot")
+        self._status_dot.setFixedSize(8, 8)
+        self._status_text = QLabel(strings.INSTALL_STATUS_IDLE, self._status_frame)
+        self._status_text.setObjectName("statusText")
+        sf_row.addWidget(self._status_dot)
+        sf_row.addWidget(self._status_text, 1)
+        body_lay.addWidget(self._status_frame)
+
+        # Legacy attribute name still used by some flows (kept as alias).
+        self._status_lbl = self._status_text
+
+        return card(strings.INSTALLER_LABEL_INSTALLATION, body, parent=self)
+
+    def _build_results_card(self) -> QWidget:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        self._results_table = QTableWidget(0, 4)
         self._results_table.setHorizontalHeaderLabels([
             strings.INSTALLER_COL_FILE,
             strings.INSTALLER_COL_SERIAL,
@@ -329,8 +425,20 @@ class InstallerModule(IModule):
         self._results_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeToContents
         )
-        rb.addWidget(self._results_table, 1)
-        root.addWidget(res_box, 2)
+        self._results_table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+        self._results_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._results_table.setMinimumHeight(132)
+        body_lay.addWidget(self._results_table, 1)
+
+        self._results_empty = QLabel(strings.INSTALLER_EMPTY_RESULTS, body)
+        self._results_empty.setProperty("role", "hint")
+        self._results_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._results_empty.setMinimumHeight(132)
+        body_lay.addWidget(self._results_empty)
+        self._results_empty.setVisible(True)
+        self._results_table.setVisible(False)
+
+        return card(strings.INSTALLER_LABEL_RESULTS, body, parent=self)
 
     def _wire_signals(self) -> None:
         self._adb.devices.deviceConnected.connect(self._on_device_event)
@@ -355,12 +463,53 @@ class InstallerModule(IModule):
     def on_device_disconnected(self) -> None:
         return None
 
+    # ------------------------- Drop targets ---------------------------
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: D401
+        if event.mimeData().hasUrls() and self._has_droppable(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:  # noqa: D401
+        if event.mimeData().hasUrls() and self._has_droppable(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: D401
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        accepted = False
+        for url in event.mimeData().urls():
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if path.suffix.lower() not in _SUPPORTED_EXTS + (_AAB_EXT,):
+                continue
+            self._add_one_file(path)
+            accepted = True
+        if accepted:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    @staticmethod
+    def _has_droppable(event) -> bool:
+        for url in event.mimeData().urls():
+            if not url.isLocalFile():
+                continue
+            if Path(url.toLocalFile()).suffix.lower() in _SUPPORTED_EXTS + (_AAB_EXT,):
+                return True
+        return False
+
     # -------------------------- Files panel ----------------------------
     def _on_add_files(self) -> None:
         # Adding new files clears the prior results log (§3.3.3).
         if self._results_log:
             self._results_log = []
             self._results_table.setRowCount(0)
+            self._refresh_empty_states()
         paths_picked, _ = QFileDialog.getOpenFileNames(
             self,
             strings.INSTALLER_TITLE_ADD,
@@ -375,10 +524,10 @@ class InstallerModule(IModule):
     def _add_one_file(self, path: Path) -> None:
         ext = path.suffix.lower()
         if ext == _AAB_EXT:
-            self._status_lbl.setText(strings.INSTALLER_MSG_AAB_UNSUPPORTED)
+            self._status_text.setText(strings.INSTALLER_MSG_AAB_UNSUPPORTED)
             return
         if ext not in _SUPPORTED_EXTS:
-            self._status_lbl.setText(
+            self._status_text.setText(
                 strings.INSTALLER_MSG_UNSUPPORTED_FORMAT.format(ext=ext)
             )
             return
@@ -399,6 +548,8 @@ class InstallerModule(IModule):
         self._files_table.setItem(row, 1, name_item)
         self._files_table.setItem(row, 2, QTableWidgetItem(ext.lstrip(".")))
         self._files_table.setItem(row, 3, QTableWidgetItem(_fmt_size(size)))
+        self._refresh_empty_states()
+        self._update_install_btn()
 
     def _on_remove_file(self) -> None:
         rows = sorted(
@@ -413,12 +564,25 @@ class InstallerModule(IModule):
             self._files_table.removeRow(r)
             if 0 <= r < len(self._files):
                 del self._files[r]
+        self._refresh_empty_states()
         self._update_install_btn()
 
     def _on_clear_files(self) -> None:
         self._files_table.setRowCount(0)
         self._files.clear()
+        self._refresh_empty_states()
         self._update_install_btn()
+
+    def _refresh_empty_states(self) -> None:
+        has_files = self._files_table.rowCount() > 0
+        self._files_table.setVisible(has_files)
+        self._files_empty.setVisible(not has_files)
+        has_devices = self._devices_list.count() > 0
+        self._devices_list.setVisible(has_devices)
+        self._devices_empty.setVisible(not has_devices)
+        has_results = self._results_table.rowCount() > 0
+        self._results_table.setVisible(has_results)
+        self._results_empty.setVisible(not has_results)
 
     # -------------------------- Devices panel --------------------------
     def _refresh_devices(self) -> None:
@@ -441,6 +605,7 @@ class InstallerModule(IModule):
             )
             self._devices_list.addItem(item)
             self._serial_model[ctx.serial] = ctx.model or ""
+        self._refresh_empty_states()
         self._update_install_btn()
 
     def _checked_serials(self) -> set[str]:
@@ -483,6 +648,29 @@ class InstallerModule(IModule):
             if self._running_pid is not None:
                 self._adb.processes.stop(self._running_pid)
 
+    # ------------------- install state helpers -----------------------
+    def _set_install_state(self, state: str, text: Optional[str] = None) -> None:
+        if state not in ("idle", "running", "done", "error"):
+            state = "idle"
+        self._status_frame.setProperty("state", state)
+        # Re-polish to apply state-dependent QSS rules.
+        st = self._status_frame.style()
+        st.unpolish(self._status_frame)
+        st.polish(self._status_frame)
+        if text is None:
+            if state == "idle":
+                text = strings.INSTALL_STATUS_IDLE
+            elif state == "error":
+                text = strings.INSTALL_STATUS_ERROR
+        if text is not None:
+            self._status_text.setText(text)
+
+    def _update_percent(self, value: int, total: int) -> None:
+        self._progress.setRange(0, max(total, 1))
+        self._progress.setValue(value)
+        pct = int(round(100 * value / max(total, 1))) if total else 0
+        self._pct_label.setText(f"{pct}%")
+
     # -------------------------- Install run ----------------------------
     def _on_install(self) -> None:
         if self._running_job is not None or self._queue:
@@ -495,7 +683,7 @@ class InstallerModule(IModule):
             and r < len(self._files)
         ]
         if not files_to_install:
-            self._status_lbl.setText(strings.INSTALLER_MSG_NO_FILES)
+            self._set_install_state("error", strings.INSTALLER_MSG_NO_FILES)
             return
         devices = [
             _DeviceEntry(
@@ -506,7 +694,7 @@ class InstallerModule(IModule):
             if self._devices_list.item(i).checkState() == Qt.Checked
         ]
         if not devices:
-            self._status_lbl.setText(strings.INSTALLER_MSG_NO_DEVICES)
+            self._set_install_state("error", strings.INSTALLER_MSG_NO_DEVICES)
             return
 
         # Build the file × device queue (§3.3.3 sequential order).
@@ -521,20 +709,27 @@ class InstallerModule(IModule):
         self._scratch_dirs.clear()
         self._cancel_requested = False
         self._results_table.setRowCount(0)
+        self._refresh_empty_states()
 
         self._install_btn.setEnabled(False)
         self._add_btn.setEnabled(False)
         self._remove_btn.setEnabled(False)
         self._clear_btn.setEnabled(False)
         self._cancel_btn.setEnabled(True)
-        self._progress.setRange(0, len(self._queue))
-        self._progress.setValue(0)
+        self._batch_total = len(self._queue)
+        self._update_percent(0, self._batch_total)
+        self._set_install_state("running", strings.INSTALL_STATUS_RUNNING.format(
+            n=1, m=self._batch_total,
+            file=self._queue[0].file_entry.path.name,
+            device=self._queue[0].device_entry.model
+            or self._queue[0].device_entry.serial,
+        ))
         self._dispatch_next()
 
     def _on_cancel(self) -> None:
         self._cancel_requested = True
         # In-flight job still completes; remaining queue is dropped after it.
-        self._status_lbl.setText(strings.INSTALLER_BTN_CANCEL + "…")
+        self._set_install_state("running", strings.INSTALLER_BTN_CANCEL + "…")
 
     def _dispatch_next(self) -> None:
         if self._cancel_requested or not self._queue:
@@ -555,12 +750,13 @@ class InstallerModule(IModule):
 
         self._running_job = job
         self._running_stdout = bytearray()
-        self._status_lbl.setText(
-            strings.INSTALLER_MSG_RUNNING.format(
-                file=job.file_entry.path.name,
-                device=f"{job.device_entry.model or '?'} ({job.device_entry.serial})",
-            )
-        )
+        completed = self._batch_total - len(self._queue)
+        self._set_install_state("running", strings.INSTALL_STATUS_RUNNING.format(
+            n=completed,
+            m=self._batch_total,
+            file=job.file_entry.path.name,
+            device=job.device_entry.model or job.device_entry.serial,
+        ))
         self._append_result_row(_ResultEntry(
             file_name=job.file_entry.path.name,
             serial=job.device_entry.serial,
@@ -748,6 +944,7 @@ class InstallerModule(IModule):
         self._results_table.setItem(
             row, 3, QTableWidgetItem(r.human if not final else _result_text(r))
         )
+        self._refresh_empty_states()
         return row
 
     def _record_result(self, job: _Job, r: _ResultEntry) -> None:
@@ -761,7 +958,7 @@ class InstallerModule(IModule):
         completed = sum(
             1 for rr in self._results_log if rr.state in (_RES_OK, _RES_FAIL, _RES_SKIP)
         )
-        self._progress.setValue(completed)
+        self._update_percent(completed, max(self._batch_total, 1))
         _log.info(
             "install result file=%s serial=%s state=%s",
             r.file_name, r.serial, r.state,
@@ -780,14 +977,20 @@ class InstallerModule(IModule):
         self._remove_btn.setEnabled(True)
         self._clear_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
-        self._progress.setRange(0, 1)
-        self._progress.setValue(0)
 
         ok = sum(1 for r in self._results_log if r.state == _RES_OK)
         fail = sum(1 for r in self._results_log if r.state != _RES_OK)
-        self._status_lbl.setText(
-            strings.INSTALLER_MSG_DONE.format(ok=ok, fail=fail)
-        )
+        total = max(self._batch_total, 1)
+        self._update_percent(ok + fail, total)
+        if fail and not ok:
+            self._set_install_state("error", strings.INSTALL_STATUS_ERROR)
+        else:
+            self._set_install_state(
+                "done",
+                strings.INSTALL_STATUS_DONE.format(
+                    ok=ok, total=total, fail=fail
+                ),
+            )
 
         # Clean up temp extraction dirs.
         for d in self._scratch_dirs:
@@ -816,6 +1019,13 @@ def _fmt_size(n: int) -> str:
             return f"{f:.1f} {u}" if u != "B" else f"{int(f)} {u}"
         f /= 1024.0
     return f"{int(n)} B"
+
+
+def _mono_font(widget: QWidget):
+    font = widget.font()
+    font.setFamily("JetBrains Mono")
+    font.setStyleHint(font.StyleHint.Monospace)
+    return font
 
 
 __all__ = ["InstallerModule"]

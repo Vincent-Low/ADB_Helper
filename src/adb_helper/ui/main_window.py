@@ -11,6 +11,7 @@ from typing import Dict, Optional
 from PySide6.QtCore import QByteArray, QSize, Qt
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
@@ -27,7 +28,7 @@ from ..core.settings_manager import SettingsManager
 from ..core import strings
 from .sidebar import Sidebar
 from .status_bar import AppStatusBar
-from .theme_manager import Theme, ThemeManager
+from .theming import Theme, ThemeManager
 
 _log = get_logger(__name__)
 
@@ -107,6 +108,10 @@ class MainWindow(QMainWindow):
         self._adb.activeDeviceChanged.connect(self._on_active_device_changed)
         self._adb.devices.deviceDisconnected.connect(self._on_device_disconnected)
         self._theme.theme_changed.connect(self._on_theme_changed)
+        # TODO: wire status bar battery / ADB-daemon segments once
+        # AdbService exposes batteryChanged / daemonStateChanged signals.
+        # Until then the bar stays on its safe defaults (battery hidden,
+        # ADB shown as running).
 
     # --- public API ------------------------------------------------------
     def navigate_to(self, module_id: str) -> None:
@@ -171,8 +176,15 @@ class MainWindow(QMainWindow):
 
     def _on_theme_changed(self, theme: Theme) -> None:
         _log.info("MainWindow: theme changed -> %s", theme.value)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        app = QApplication.instance()
+        if app is not None:
+            for w in app.allWidgets():
+                style = w.style()
+                style.unpolish(w)
+                style.polish(w)
+                w.update()
+        # Sidebar self-subscribes to theme_changed and re-renders its SVG
+        # icons against the new tokens — no extra call needed here.
 
     # --- geometry --------------------------------------------------------
     def _restore_geometry(self) -> None:

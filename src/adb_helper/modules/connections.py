@@ -1,9 +1,13 @@
-"""Module: Connections (Spec §3.1).
+"""Module: Connections (Spec §3.1; Redesign §5.1).
 
 Default module shown on launch. Manages USB and Wi-Fi (classic + Android 11+
 pairing) ADB connections, lists live devices via ``adb track-devices`` (driven
 by :class:`DeviceMonitor` signals), and persists paired Wi-Fi devices for
 manual reconnection. No auto-reconnect on startup (§9).
+
+Layout (Redesign §5.1): 2×2 ``QGridLayout`` of role="card" cards —
+    (0,0) Wi-Fi Pairing    | (0,1) Wi-Fi Connection (Legacy)
+    (1,0) Connected Devices| (1,1) Paired Devices
 
 All ADB traffic flows through :class:`AdbService`; no direct ``subprocess`` or
 ``QProcess`` use here (CLAUDE.md invariant 1). All user-facing strings come
@@ -17,7 +21,8 @@ from PySide6.QtCore import QRegularExpression, Qt, Slot
 from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QGroupBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,6 +44,7 @@ from ..core.device_context import DeviceContext
 from ..core.error_parser import parse as parse_error
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import card, card_with_header_actions, page_header
 from ..ui.style_utils import set_variant as _set_variant
 
 _log = get_logger(__name__)
@@ -70,16 +76,31 @@ def _split_ip_port(serial: str) -> tuple[str, str]:
     return "", ""
 
 
-def _status_label(status: str) -> str:
+def _pill_kind_for_status(status: str) -> str:
+    if status == "online":
+        return "online"
+    if status == "unauthorized":
+        return "warn"
+    return "offline"
+
+
+def _status_pill_text(status: str) -> str:
     if status == "online":
         return strings.STATUS_ONLINE
     if status == "unauthorized":
-        return f"{strings.STATUS_UNAUTHORIZED} {strings.ICON_UNAUTHORIZED}"
+        return strings.STATUS_UNAUTHORIZED
     return strings.STATUS_OFFLINE
 
 
+def _make_pill(text: str, kind: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setProperty("pill", kind)
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    return lbl
+
+
 class ConnectionsModule(IModule):
-    """Connections screen (§3.1)."""
+    """Connections screen (§3.1; Redesign §5.1)."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -111,16 +132,149 @@ class ConnectionsModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
-        root.addWidget(self._build_live_group())
-        root.addWidget(self._build_wifi_classic_group())
-        root.addWidget(self._build_wifi_pairing_group())
-        root.addWidget(self._build_paired_group(), 1)
+        # --- page header --------------------------------------------------
+        self._refresh_btn = QPushButton(strings.BTN_REFRESH, self)
+        _set_variant(self._refresh_btn, "primary")
+        self._scan_btn = QPushButton(strings.BTN_SCAN_NETWORK, self)
+        self._scan_btn.setEnabled(False)
+        self._scan_btn.setToolTip(strings.TOOLTIP_NOT_IMPLEMENTED)
+        header = page_header(
+            strings.LABEL_CONNECTIONS,
+            strings.PAGE_SUBTITLE_CONNECTIONS,
+            actions=[self._scan_btn, self._refresh_btn],
+            parent=self,
+        )
+        root.addWidget(header)
 
-    def _build_live_group(self) -> QGroupBox:
-        g = QGroupBox(strings.LABEL_CONNECTED_DEVICES, self)
-        lay = QVBoxLayout(g)
+        # --- 2×2 card grid ------------------------------------------------
+        grid_host = QWidget(self)
+        grid = QGridLayout(grid_host)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 1)
+        grid.setRowStretch(1, 1)
 
-        self._live_table = QTableWidget(0, 4, g)
+        grid.addWidget(self._build_wifi_pairing_card(), 0, 0)
+        grid.addWidget(self._build_wifi_classic_card(), 0, 1)
+        grid.addWidget(self._build_live_card(), 1, 0)
+        grid.addWidget(self._build_paired_card(), 1, 1)
+
+        root.addWidget(grid_host, 1)
+
+    # --- card builders ---------------------------------------------------
+    def _build_wifi_pairing_card(self) -> QFrame:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        # Row 1: IP address.
+        ip_row = QHBoxLayout()
+        ip_row.setSpacing(10)
+        ip_row.addWidget(QLabel(strings.FIELD_IP_ADDRESS))
+        self._wp_ip = QLineEdit()
+        self._wp_ip.setPlaceholderText(strings.HINT_IP_ADDRESS)
+        self._wp_ip.setValidator(
+            QRegularExpressionValidator(QRegularExpression(_IP_RE), self._wp_ip)
+        )
+        ip_row.addWidget(self._wp_ip, 1)
+        body_lay.addLayout(ip_row)
+
+        # Row 2: Pairing Port + PIN + Pair button (single line, per plan §5.1).
+        pp_row = QHBoxLayout()
+        pp_row.setSpacing(10)
+        pp_row.addWidget(QLabel(strings.FIELD_PAIRING_PORT))
+        self._wp_port = QLineEdit()
+        self._wp_port.setFixedWidth(130)
+        self._wp_port.setPlaceholderText("44331")
+        self._wp_port.setMaxLength(5)
+        self._wp_port.setValidator(
+            QRegularExpressionValidator(
+                QRegularExpression(r"^\d{1,5}$"), self._wp_port
+            )
+        )
+        pp_row.addWidget(self._wp_port)
+
+        pp_row.addWidget(QLabel(strings.FIELD_PIN))
+        self._wp_pin = QLineEdit()
+        self._wp_pin.setFixedWidth(130)
+        self._wp_pin.setEchoMode(QLineEdit.Normal)
+        self._wp_pin.setMaxLength(6)
+        self._wp_pin.setPlaceholderText("123456")
+        self._wp_pin.setValidator(
+            QRegularExpressionValidator(
+                QRegularExpression(r"^\d{0,6}$"), self._wp_pin
+            )
+        )
+        pp_row.addWidget(self._wp_pin)
+
+        pp_row.addStretch(1)
+
+        self._wp_pair_btn = QPushButton(strings.BTN_PAIR)
+        _set_variant(self._wp_pair_btn, "primary")
+        pp_row.addWidget(self._wp_pair_btn)
+        body_lay.addLayout(pp_row)
+
+        # Status line.
+        self._wp_status = QLabel("")
+        self._wp_status.setWordWrap(True)
+        self._wp_status.setProperty("role", "hint")
+        body_lay.addWidget(self._wp_status)
+        body_lay.addStretch(1)
+
+        return card(strings.CARD_WIFI_PAIRING, body, parent=self)
+
+    def _build_wifi_classic_card(self) -> QFrame:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addWidget(QLabel(strings.FIELD_IP_ADDRESS))
+        self._wc_ip = QLineEdit()
+        self._wc_ip.setPlaceholderText(strings.HINT_IP_ADDRESS)
+        self._wc_ip.setValidator(
+            QRegularExpressionValidator(QRegularExpression(_IP_RE), self._wc_ip)
+        )
+        row.addWidget(self._wc_ip, 1)
+
+        row.addWidget(QLabel(strings.FIELD_PORT))
+        self._wc_port = QSpinBox()
+        self._wc_port.setRange(1, 65535)
+        self._wc_port.setValue(5555)
+        self._wc_port.setFixedWidth(110)
+        row.addWidget(self._wc_port)
+
+        body_lay.addLayout(row)
+
+        connect_row = QHBoxLayout()
+        connect_row.setSpacing(10)
+        connect_row.addStretch(1)
+        self._wc_connect_btn = QPushButton(strings.BTN_CONNECT)
+        _set_variant(self._wc_connect_btn, "primary")
+        connect_row.addWidget(self._wc_connect_btn)
+        body_lay.addLayout(connect_row)
+
+        self._wc_status = QLabel("")
+        self._wc_status.setWordWrap(True)
+        self._wc_status.setProperty("role", "hint")
+        body_lay.addWidget(self._wc_status)
+        body_lay.addStretch(1)
+
+        return card(strings.CARD_WIFI_CLASSIC, body, parent=self)
+
+    def _build_live_card(self) -> QFrame:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
+
+        self._live_table = QTableWidget(0, 4)
         self._live_table.setHorizontalHeaderLabels(
             [
                 strings.COL_SERIAL,
@@ -137,100 +291,25 @@ class ConnectionsModule(IModule):
         self._live_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeToContents
         )
-        lay.addWidget(self._live_table)
+        body_lay.addWidget(self._live_table, 1)
 
         actions = QHBoxLayout()
         actions.addStretch(1)
-        self._disconnect_btn = QPushButton(strings.BTN_DISCONNECT, g)
+        self._disconnect_btn = QPushButton(strings.BTN_DISCONNECT)
         _set_variant(self._disconnect_btn, "destructive")
         self._disconnect_btn.setEnabled(False)
         actions.addWidget(self._disconnect_btn)
-        lay.addLayout(actions)
-        return g
+        body_lay.addLayout(actions)
 
-    def _build_wifi_classic_group(self) -> QGroupBox:
-        g = QGroupBox(strings.LABEL_WIFI_CLASSIC, self)
-        lay = QVBoxLayout(g)
+        return card(strings.CARD_CONNECTED_DEVICES, body, parent=self)
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel(strings.FIELD_IP_ADDRESS, g))
-        self._wc_ip = QLineEdit(g)
-        self._wc_ip.setPlaceholderText(strings.HINT_IP_ADDRESS)
-        self._wc_ip.setValidator(
-            QRegularExpressionValidator(QRegularExpression(_IP_RE), self._wc_ip)
-        )
-        row.addWidget(self._wc_ip, 2)
+    def _build_paired_card(self) -> QFrame:
+        body = QWidget()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(0, 0, 0, 0)
+        body_lay.setSpacing(10)
 
-        row.addWidget(QLabel(strings.FIELD_PORT, g))
-        self._wc_port = QSpinBox(g)
-        self._wc_port.setRange(1, 65535)
-        self._wc_port.setValue(5555)
-        row.addWidget(self._wc_port, 0)
-
-        self._wc_connect_btn = QPushButton(strings.BTN_CONNECT, g)
-        _set_variant(self._wc_connect_btn, "primary")
-        row.addWidget(self._wc_connect_btn, 0)
-        lay.addLayout(row)
-
-        self._wc_status = QLabel("", g)
-        self._wc_status.setWordWrap(True)
-        self._wc_status.setProperty("secondary", "true")
-        lay.addWidget(self._wc_status)
-        return g
-
-    def _build_wifi_pairing_group(self) -> QGroupBox:
-        g = QGroupBox(strings.LABEL_WIFI_PAIRING, self)
-        lay = QVBoxLayout(g)
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel(strings.FIELD_IP_ADDRESS, g))
-        self._wp_ip = QLineEdit(g)
-        self._wp_ip.setPlaceholderText(strings.HINT_IP_ADDRESS)
-        self._wp_ip.setValidator(
-            QRegularExpressionValidator(QRegularExpression(_IP_RE), self._wp_ip)
-        )
-        row.addWidget(self._wp_ip, 2)
-
-        row.addWidget(QLabel(strings.FIELD_PAIRING_PORT, g))
-        self._wp_port = QLineEdit(g)
-        self._wp_port.setPlaceholderText("44331")
-        self._wp_port.setMaxLength(5)
-        self._wp_port.setValidator(
-            QRegularExpressionValidator(
-                QRegularExpression(r"^\d{1,5}$"), self._wp_port
-            )
-        )
-        self._wp_port.setFixedWidth(80)
-        row.addWidget(self._wp_port, 0)
-
-        row.addWidget(QLabel(strings.FIELD_PIN, g))
-        self._wp_pin = QLineEdit(g)
-        self._wp_pin.setEchoMode(QLineEdit.Normal)
-        self._wp_pin.setMaxLength(6)
-        self._wp_pin.setPlaceholderText(strings.HINT_PIN)
-        self._wp_pin.setValidator(
-            QRegularExpressionValidator(
-                QRegularExpression(r"^\d{6}$"), self._wp_pin
-            )
-        )
-        row.addWidget(self._wp_pin, 0)
-
-        self._wp_pair_btn = QPushButton(strings.BTN_PAIR, g)
-        _set_variant(self._wp_pair_btn, "primary")
-        row.addWidget(self._wp_pair_btn, 0)
-        lay.addLayout(row)
-
-        self._wp_status = QLabel("", g)
-        self._wp_status.setWordWrap(True)
-        self._wp_status.setProperty("secondary", "true")
-        lay.addWidget(self._wp_status)
-        return g
-
-    def _build_paired_group(self) -> QGroupBox:
-        g = QGroupBox(strings.LABEL_PAIRED_DEVICES, self)
-        lay = QVBoxLayout(g)
-
-        self._paired_table = QTableWidget(0, 4, g)
+        self._paired_table = QTableWidget(0, 4)
         self._paired_table.setHorizontalHeaderLabels(
             [
                 strings.COL_ALIAS,
@@ -242,25 +321,30 @@ class ConnectionsModule(IModule):
         self._paired_table.verticalHeader().setVisible(False)
         self._paired_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._paired_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self._paired_table.verticalHeader().setDefaultSectionSize(34)
+        # Row height 40 keeps the size="sm" QLineEdit (28 px) fully visible
+        # — fixes handoff §6.1.
+        self._paired_table.verticalHeader().setDefaultSectionSize(40)
         hdr = self._paired_table.horizontalHeader()
         hdr.setStretchLastSection(True)
         hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
-        self._paired_table.setColumnWidth(_PCOL_PORT, 110)
-        lay.addWidget(self._paired_table)
+        hdr.setSectionResizeMode(_PCOL_PORT, QHeaderView.Interactive)
+        hdr.resizeSection(_PCOL_PORT, 140)
+        self._paired_table.setColumnWidth(_PCOL_PORT, 140)
+        body_lay.addWidget(self._paired_table, 1)
 
         actions = QHBoxLayout()
         actions.addStretch(1)
-        self._paired_connect_btn = QPushButton(strings.BTN_CONNECT, g)
+        self._paired_connect_btn = QPushButton(strings.BTN_CONNECT)
         _set_variant(self._paired_connect_btn, "primary")
         self._paired_connect_btn.setEnabled(False)
         actions.addWidget(self._paired_connect_btn)
-        self._paired_forget_btn = QPushButton(strings.BTN_FORGET, g)
+        self._paired_forget_btn = QPushButton(strings.BTN_FORGET)
         _set_variant(self._paired_forget_btn, "destructive")
         self._paired_forget_btn.setEnabled(False)
         actions.addWidget(self._paired_forget_btn)
-        lay.addLayout(actions)
-        return g
+        body_lay.addLayout(actions)
+
+        return card(strings.CARD_PAIRED_DEVICES, body, parent=self)
 
     # ------------------------------------------------------------------
     # Signal wiring
@@ -281,6 +365,7 @@ class ConnectionsModule(IModule):
 
         self._wc_connect_btn.clicked.connect(self._on_wifi_classic_connect)
         self._wp_pair_btn.clicked.connect(self._on_wifi_pair)
+        self._refresh_btn.clicked.connect(self._on_refresh_clicked)
 
         self._paired_table.itemSelectionChanged.connect(
             self._on_paired_selection_changed
@@ -311,6 +396,10 @@ class ConnectionsModule(IModule):
             self._syncing_live = False
         self._disconnect_btn.setEnabled(False)
 
+    def _on_refresh_clicked(self) -> None:
+        self._refresh_live_table()
+        self._refresh_paired_table()
+
     # ------------------------------------------------------------------
     # Live device table
     # ------------------------------------------------------------------
@@ -330,17 +419,22 @@ class ConnectionsModule(IModule):
 
     def _set_live_row(self, row: int, ctx: DeviceContext) -> None:
         ip, _ = _split_ip_port(ctx.serial)
-        items = [
-            QTableWidgetItem(ctx.serial),
-            QTableWidgetItem(ip),
-            QTableWidgetItem(ctx.model or ""),
-            QTableWidgetItem(_status_label(ctx.status)),
-        ]
-        items[_COL_SERIAL].setData(Qt.UserRole, ctx.serial)
-        items[_COL_STATUS].setData(Qt.UserRole, ctx.status)
-        for col, it in enumerate(items):
+        serial_item = QTableWidgetItem(ctx.serial)
+        serial_item.setData(Qt.UserRole, ctx.serial)
+        ip_item = QTableWidgetItem(ip)
+        model_item = QTableWidgetItem(ctx.model or "")
+        for it in (serial_item, ip_item, model_item):
             it.setFlags(it.flags() & ~Qt.ItemIsEditable)
-            self._live_table.setItem(row, col, it)
+        self._live_table.setItem(row, _COL_SERIAL, serial_item)
+        self._live_table.setItem(row, _COL_IP, ip_item)
+        self._live_table.setItem(row, _COL_MODEL, model_item)
+
+        kind = _pill_kind_for_status(ctx.status)
+        text = _status_pill_text(ctx.status)
+        pill = _make_pill(text, kind)
+        # Stash the raw status for unauthorized-click detection.
+        pill.setProperty("_status", ctx.status)
+        self._live_table.setCellWidget(row, _COL_STATUS, pill)
 
     def _find_live_row(self, serial: str) -> int:
         for row in range(self._live_table.rowCount()):
@@ -401,10 +495,10 @@ class ConnectionsModule(IModule):
     def _on_live_cell_clicked(self, row: int, col: int) -> None:
         if col != _COL_STATUS:
             return
-        item = self._live_table.item(row, _COL_STATUS)
-        if item is None:
+        w = self._live_table.cellWidget(row, _COL_STATUS)
+        if w is None:
             return
-        if item.data(Qt.UserRole) == "unauthorized":
+        if w.property("_status") == "unauthorized":
             QMessageBox.information(
                 self,
                 strings.TITLE_UNAUTHORIZED_DIALOG,
@@ -496,8 +590,8 @@ class ConnectionsModule(IModule):
             return
         port_text = self._wp_port.text().strip()
         if not port_text.isdigit() or not (1 <= int(port_text) <= 65535):
-                self._wp_status.setText(strings.MSG_INVALID_PORT)
-                return
+            self._wp_status.setText(strings.MSG_INVALID_PORT)
+            return
         port = int(port_text)
         pin = self._wp_pin.text().strip()
         if len(pin) != 6 or not pin.isdigit():
@@ -564,25 +658,13 @@ class ConnectionsModule(IModule):
                 self._paired_table.setItem(row, _PCOL_LAST, last_item)
 
                 port_edit = QLineEdit()
-                port_edit.setFrame(False)
-                port_edit.setMaximumHeight(28)
+                port_edit.setProperty("size", "sm")
                 port_edit.setPlaceholderText("40787")
                 port_edit.setMaxLength(5)
                 port_edit.setValidator(
                     QRegularExpressionValidator(
                         QRegularExpression(r"^\d{0,5}$"), port_edit
                     )
-                )
-                port_edit.setStyleSheet(
-                    "QLineEdit {"
-                    "  background: transparent;"
-                    "  padding: 0px 4px;"
-                    "}"
-                    "QLineEdit:focus {"
-                    "  background: palette(base);"
-                    "  border: 1px solid palette(highlight);"
-                    "  border-radius: 2px;"
-                    "}"
                 )
                 stored_port = r.get("connect_port")
                 if stored_port is not None:

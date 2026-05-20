@@ -139,6 +139,9 @@ TERM_BTN_STOP_RECORDING: Final = "Stop Recording"
 TERM_BTN_PLAY: Final = "Play"
 TERM_BTN_STOP_PLAYBACK: Final = "Stop"
 TERM_LABEL_MACROS: Final = "Macros"
+TERM_CARD_MACROS: Final = "MACROS"
+TERM_MACROS_EMPTY: Final = "No macros saved."
+TERM_BTN_RECORD_SHORT: Final = "Record"
 TERM_LABEL_HISTORY_TITLE: Final = "Command History"
 TERM_LABEL_SAVE_MACRO_TITLE: Final = "Save Macro"
 TERM_LABEL_RENAME_MACRO_TITLE: Final = "Rename Macro"
@@ -210,6 +213,7 @@ SCRCPY_LABEL_LAUNCH_OPTIONS: Final = "LAUNCH OPTIONS"
 SCRCPY_LABEL_NO_LIMIT: Final = "No limit"
 SCRCPY_LABEL_AUTO: Final = "Auto"
 SCRCPY_BTN_LAUNCH: Final = "Launch"
+SCRCPY_BTN_LAUNCH_PRIMARY: Final = "▶ Launch"
 SCRCPY_BTN_RETRY: Final = "Retry"
 SCRCPY_BTN_DOWNLOAD: Final = "Download"
 SCRCPY_MSG_NO_DEVICE: Final = "No active device. Select a device in Connections."
@@ -371,6 +375,35 @@ APPS_TITLE_ENABLE: Final = "Enable Apps"
 APPS_TITLE_EXPORT: Final = "Export App List"
 APPS_FILTER_CSV: Final = "CSV Files (*.csv)"
 
+# Apps redesign (§5.7) — card labels, detail panel, single-app actions.
+APPS_CARD_PACKAGES: Final = "PACKAGES"
+APPS_CARD_DETAILS: Final = "APP DETAILS"
+APPS_DETAIL_EMPTY: Final = "Select a package to view details"
+APPS_COUNTER_FMT: Final = "{count} packages"
+APPS_BTN_OPEN: Final = "Open"
+APPS_BTN_FORCE_STOP: Final = "Force-stop"
+APPS_BTN_CLEAR_DATA: Final = "Clear data"
+APPS_BTN_UNINSTALL: Final = "Uninstall"
+APPS_META_PACKAGE: Final = "Package"
+APPS_META_LABEL: Final = "Label"
+APPS_META_TYPE: Final = "Type"
+APPS_META_STATUS: Final = "Status"
+APPS_META_VERSION: Final = "Version"
+APPS_META_VERSION_CODE: Final = "Version code"
+APPS_META_UID: Final = "UID"
+APPS_META_APK_PATH: Final = "APK path"
+APPS_CONFIRM_FORCE_STOP: Final = (
+    "Stop {pkg} and any of its background services?"
+)
+APPS_CONFIRM_CLEAR_DATA: Final = (
+    "Clear all data and caches for {pkg}? The app will be reset to first-run state."
+)
+APPS_MSG_OPEN_FAILED: Final = "Failed to open {pkg}: {error}"
+APPS_MSG_FORCE_STOP_FAILED: Final = "Failed to force-stop {pkg}: {error}"
+APPS_MSG_CLEAR_DATA_FAILED: Final = "Failed to clear data for {pkg}: {error}"
+APPS_TITLE_FORCE_STOP: Final = "Force-stop App"
+APPS_TITLE_CLEAR_DATA: Final = "Clear App Data"
+
 # --- Logcat module (Spec §3.8) -------------------------------------------
 LOG_BTN_EXPORT: Final = "Export Logcat"
 LOG_TITLE_EXPORT: Final = "Logcat"
@@ -434,6 +467,18 @@ INSTALLER_MSG_NO_DEVICES: Final = "Select at least one device."
 INSTALLER_MSG_NO_CONNECTED: Final = "No connected devices."
 INSTALLER_MSG_RUNNING: Final = "Installing {file} on {device}…"
 INSTALLER_MSG_DONE: Final = "Done. {ok} succeeded, {fail} failed."
+
+# Installer status frame (Redesign §5.3 / handoff §7.3).
+INSTALL_STATUS_IDLE: Final = (
+    "Idle — add files and select a target device to begin."
+)
+INSTALL_STATUS_RUNNING: Final = "Installing {n} of {m} — {file} on {device}…"
+INSTALL_STATUS_DONE: Final = "Installed {ok} of {total} · {fail} errors"
+INSTALL_STATUS_ERROR: Final = "Install failed — see Results"
+
+INSTALLER_EMPTY_FILES: Final = "No files yet — add APK / .apks / .xapk / .apkm to install."
+INSTALLER_EMPTY_RESULTS: Final = "No installations yet. Run an install to see results here."
+INSTALLER_EMPTY_DEVICES: Final = "No connected devices."
 INSTALLER_MSG_AAB_UNSUPPORTED: Final = (
     "Android App Bundle (.aab) is not supported — requires the developer "
     "signing key."
@@ -447,8 +492,40 @@ INSTALLER_MSG_JRE_MISSING: Final = (
 )
 INSTALLER_MSG_UNSUPPORTED_FORMAT: Final = "Unsupported file format: {ext}"
 
+# --- Page headers (Redesign §5) -------------------------------------------
+PAGE_SUBTITLE_CONNECTIONS: Final = (
+    "Connect over Wi-Fi or pair a new Android 11+ device"
+)
+PAGE_SUBTITLE_TERMINAL: Final = "Active device: {serial}"
+PAGE_SUBTITLE_INSTALLER: Final = "Install APK / AAB on selected devices"
+PAGE_SUBTITLE_SCRCPY: Final = "Mirror the device screen with scrcpy"
+PAGE_SUBTITLE_DEVICE_BUTTONS: Final = "Send hardware-key events to the device"
+PAGE_SUBTITLE_DEVICE_INFO: Final = "Auto-collected from {serial}"
+PAGE_SUBTITLE_APPS: Final = "Inspect, manage and uninstall installed packages"
+PAGE_SUBTITLE_LOGCAT: Final = "Capture device logcat to a file"
+PAGE_SUBTITLE_SETTINGS: Final = "Application preferences and dependency status"
+
+BTN_SCAN_NETWORK: Final = "Scan network"
+BTN_REFRESH: Final = "Refresh"
+TOOLTIP_NOT_IMPLEMENTED: Final = "Not implemented yet"
+
+# Connections card-header section labels (redesign — sentence case for cards).
+CARD_WIFI_PAIRING: Final = "WI-FI PAIRING (ANDROID 11+)"
+CARD_WIFI_CLASSIC: Final = "WI-FI CONNECTION (LEGACY)"
+CARD_CONNECTED_DEVICES: Final = "CONNECTED DEVICES"
+CARD_PAIRED_DEVICES: Final = "PAIRED DEVICES"
+
 # --- Status bar ------------------------------------------------------------
 STATUS_NO_DEVICE: Final = "No device selected"
+STATUS_BAR_TRANSPORT_LABEL: Final = "Transport:"
+STATUS_BAR_TRANSPORT_USB: Final = "USB"
+STATUS_BAR_TRANSPORT_WIFI: Final = "Wi-Fi"
+STATUS_BAR_ANDROID_FMT: Final = "Android {release} · API {sdk}"
+STATUS_BAR_API_ONLY_FMT: Final = "API {sdk}"
+STATUS_BAR_BATTERY_FMT: Final = "{pct}%"
+STATUS_BAR_ADB_PREFIX: Final = "ADB"
+STATUS_BAR_ADB_RUNNING: Final = "running"
+STATUS_BAR_ADB_STOPPED: Final = "stopped"
 
 # --- Settings module (Spec §3.9) -------------------------------------------
 APP_VERSION: Final = "1.0.0"

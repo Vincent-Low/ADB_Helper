@@ -1,7 +1,14 @@
-"""Module: Device Info (Spec §3.6).
+"""Module: Device Info (Spec §3.6; Redesign §5.6).
 
 Static-on-activate snapshot of all device info available without root.
 Refresh reloads on demand. Export to TXT supported.
+
+Layout (Redesign §5.6): 10 section cards repacked into a 2-column
+``QGridLayout`` (cards flow left → right, top → bottom) inside a
+``QScrollArea``. Each card body is a ``QFormLayout`` with label width 180,
+label text in ``text_2`` via ``role="hint"``, and value labels set as
+selectable. Technical fields (fingerprint, MAC, IP, serials) use a
+monospace font.
 """
 from __future__ import annotations
 
@@ -11,10 +18,12 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
-    QGroupBox,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -31,6 +40,8 @@ from ..core.command_runner import AdbResult, Priority
 from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import page_header
+from ..ui.style_utils import set_variant as _set_variant
 
 _log = get_logger(__name__)
 
@@ -61,23 +72,34 @@ _BATTERY_HEALTH: dict[str, str] = {
     "7": "Cold",
 }
 
+# Fields that should render in a monospace font (fingerprints, MACs, IPs, …).
+_MONO_FIELDS = frozenset({
+    strings.DI_FIELD_SERIAL,
+    strings.DI_FIELD_BUILD_FINGERPRINT,
+    strings.DI_FIELD_BUILD_NUMBER,
+    strings.DI_FIELD_BASEBAND,
+    strings.DI_FIELD_WIFI_IP,
+    strings.DI_FIELD_WIFI_MAC,
+    strings.DI_FIELD_BT_MAC,
+})
+
 # role -> adb args
 _FETCH_ROLES: dict[str, list[str]] = {
-    "getprop": ["shell", "getprop"],
-    "cpuinfo": ["shell", "cat /proc/cpuinfo"],
-    "meminfo": ["shell", "cat /proc/meminfo"],
-    "df_data": ["shell", "df /data"],
-    "wm_density": ["shell", "wm density"],
-    "battery": ["shell", "dumpsys battery"],
-    "display": ["shell", "dumpsys display"],
-    "surfaceflinger": ["shell", "dumpsys SurfaceFlinger"],
-    "ip_addr": ["shell", "ip addr show wlan0"],
-    "ip_link": ["shell", "ip link show wlan0"],
+    "getprop":       ["shell", "getprop"],
+    "cpuinfo":       ["shell", "cat /proc/cpuinfo"],
+    "meminfo":       ["shell", "cat /proc/meminfo"],
+    "df_data":       ["shell", "df /data"],
+    "wm_density":    ["shell", "wm density"],
+    "battery":       ["shell", "dumpsys battery"],
+    "display":       ["shell", "dumpsys display"],
+    "surfaceflinger":["shell", "dumpsys SurfaceFlinger"],
+    "ip_addr":       ["shell", "ip addr show wlan0"],
+    "ip_link":       ["shell", "ip link show wlan0"],
     "wlan_mac_file": ["shell", "cat /sys/class/net/wlan0/address"],
-    "bt_addr": ["shell", "settings get secure bluetooth_address"],
-    "cpu_gov": ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"],
-    "cpu_min": ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq"],
-    "cpu_max": ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"],
+    "bt_addr":       ["shell", "settings get secure bluetooth_address"],
+    "cpu_gov":       ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"],
+    "cpu_min":       ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq"],
+    "cpu_max":       ["shell", "cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"],
 }
 
 # Ordered section definitions used by both UI builder and TXT exporter.
@@ -163,8 +185,15 @@ def _khz_to_mhz(raw: str) -> str:
         return _NA
 
 
+def _mono_font_for(widget: QWidget) -> QFont:
+    font = widget.font()
+    font.setFamily("JetBrains Mono")
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    return font
+
+
 class DeviceInfoModule(IModule):
-    """Device Info screen (§3.6). Static snapshot, Refresh + Export to TXT."""
+    """Device Info screen (§3.6; Redesign §5.6). Static snapshot, Refresh + Export to TXT."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -184,48 +213,112 @@ class DeviceInfoModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
-        hdr = QHBoxLayout()
-        hdr.addStretch(1)
+        # --- page header with dynamic subtitle ---
         self._refresh_btn = QPushButton(strings.DI_BTN_REFRESH, self)
         self._refresh_btn.setEnabled(False)
         self._refresh_btn.clicked.connect(self._on_refresh)
+        _set_variant(self._refresh_btn, "primary")
+
         self._export_btn = QPushButton(strings.DI_BTN_EXPORT, self)
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._on_export)
-        hdr.addWidget(self._refresh_btn)
-        hdr.addWidget(self._export_btn)
-        root.addLayout(hdr)
 
+        # Build header inline so we can hold a ref to the subtitle label.
+        hdr_host = QWidget(self)
+        hdr_row = QHBoxLayout(hdr_host)
+        hdr_row.setContentsMargins(0, 0, 0, 0)
+        hdr_row.setSpacing(10)
+        text_col = QVBoxLayout()
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
+        title_lbl = QLabel(strings.LABEL_DEVICE_INFO, hdr_host)
+        title_lbl.setProperty("role", "page-title")
+        self._subtitle_lbl = QLabel(self._make_subtitle(), hdr_host)
+        self._subtitle_lbl.setProperty("role", "hint")
+        text_col.addWidget(title_lbl)
+        text_col.addWidget(self._subtitle_lbl)
+        hdr_row.addLayout(text_col, 1)
+        hdr_row.addWidget(self._refresh_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        hdr_row.addWidget(self._export_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        root.addWidget(hdr_host)
+
+        # Loading progress bar (indeterminate while fetching).
         self._progress = QProgressBar(self)
         self._progress.setRange(0, 0)
         self._progress.setFixedHeight(4)
+        self._progress.setTextVisible(False)
         self._progress.setVisible(False)
         root.addWidget(self._progress)
 
+        # --- 2-column card grid inside a scroll area ---
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        content = QWidget()
-        cl = QVBoxLayout(content)
-        cl.setSpacing(12)
-        cl.setContentsMargins(0, 0, 12, 0)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
 
-        for title, fields in _SECTIONS:
-            group = QGroupBox(title, content)
-            form = QFormLayout(group)
-            form.setSpacing(6)
-            form.setContentsMargins(12, 8, 12, 8)
-            for field in fields:
-                lbl = _make_value_label(_DASH)
-                if field == strings.DI_FIELD_IMEI:
-                    lbl.setToolTip(strings.DI_TOOLTIP_IMEI)
-                form.addRow(field + ":", lbl)
-                self._labels[field] = lbl
-            cl.addWidget(group)
+        content = QWidget(scroll)
+        grid = QGridLayout(content)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(16)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
-        cl.addStretch(1)
+        for idx, (title, fields) in enumerate(_SECTIONS):
+            row, col = divmod(idx, 2)
+            grid.addWidget(self._build_section_card(title, fields, content), row, col)
+
+        grid.setRowStretch(len(_SECTIONS) // 2, 1)
+
         scroll.setWidget(content)
         root.addWidget(scroll, 1)
+
+    def _build_section_card(
+        self, title: str, fields: list[str], parent: QWidget
+    ) -> QFrame:
+        """Build a QFrame[role="card"] with a QFormLayout for one info section."""
+        frame = QFrame(parent)
+        frame.setProperty("role", "card")
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Card header
+        hdr = QFrame(frame)
+        hdr.setProperty("role", "card-h")
+        hdr_lay = QHBoxLayout(hdr)
+        hdr_lay.setContentsMargins(14, 10, 14, 10)
+        sec_lbl = QLabel(title, hdr)
+        sec_lbl.setProperty("role", "section-label")
+        hdr_lay.addWidget(sec_lbl)
+        outer.addWidget(hdr)
+
+        # Card body — QFormLayout
+        body = QWidget(frame)
+        form = QFormLayout(body)
+        form.setContentsMargins(14, 14, 14, 14)
+        form.setSpacing(8)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        for field in fields:
+            # Row label: fixed width 180, hint color via role="hint".
+            row_lbl = QLabel(field + ":", body)
+            row_lbl.setProperty("role", "hint")
+            row_lbl.setFixedWidth(180)
+            row_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            if field == strings.DI_FIELD_IMEI:
+                row_lbl.setToolTip(strings.DI_TOOLTIP_IMEI)
+
+            val_lbl = _make_value_label(_DASH, body)
+            if field in _MONO_FIELDS:
+                val_lbl.setFont(_mono_font_for(val_lbl))
+
+            form.addRow(row_lbl, val_lbl)
+            self._labels[field] = val_lbl
+
+        outer.addWidget(body)
+        outer.addStretch(1)
+        return frame
 
     def _wire_signals(self) -> None:
         self._adb.commands.commandFinished.connect(self._on_cmd_finished)
@@ -265,7 +358,6 @@ class DeviceInfoModule(IModule):
         if cid not in self._pending:
             return
         self._pending.pop(cid)
-        # role result stays absent -> _set_label falls back to _NA
         if not self._pending:
             self._update_ui()
 
@@ -288,15 +380,15 @@ class DeviceInfoModule(IModule):
         s(S.DI_FIELD_SERIAL,       self._serial or _NA)
 
         # §3.6.2 System
-        s(S.DI_FIELD_ANDROID_VERSION,  props.get("ro.build.version.release",        _NA))
-        s(S.DI_FIELD_API_LEVEL,        props.get("ro.build.version.sdk",            _NA))
-        s(S.DI_FIELD_SECURITY_PATCH,   props.get("ro.build.version.security_patch", _NA))
-        s(S.DI_FIELD_BUILD_NUMBER,     props.get("ro.build.display.id",             _NA))
-        s(S.DI_FIELD_BUILD_FINGERPRINT,props.get("ro.build.fingerprint",            _NA))
-        s(S.DI_FIELD_BUILD_TYPE,       props.get("ro.build.type",                   _NA))
-        s(S.DI_FIELD_BUILD_DATE,       props.get("ro.build.date",                   _NA))
-        s(S.DI_FIELD_BOOTLOADER,       props.get("ro.bootloader",                   _NA))
-        s(S.DI_FIELD_BASEBAND,         props.get("gsm.version.baseband") or _NA)
+        s(S.DI_FIELD_ANDROID_VERSION,   props.get("ro.build.version.release",        _NA))
+        s(S.DI_FIELD_API_LEVEL,         props.get("ro.build.version.sdk",            _NA))
+        s(S.DI_FIELD_SECURITY_PATCH,    props.get("ro.build.version.security_patch", _NA))
+        s(S.DI_FIELD_BUILD_NUMBER,      props.get("ro.build.display.id",             _NA))
+        s(S.DI_FIELD_BUILD_FINGERPRINT, props.get("ro.build.fingerprint",            _NA))
+        s(S.DI_FIELD_BUILD_TYPE,        props.get("ro.build.type",                   _NA))
+        s(S.DI_FIELD_BUILD_DATE,        props.get("ro.build.date",                   _NA))
+        s(S.DI_FIELD_BOOTLOADER,        props.get("ro.bootloader",                   _NA))
+        s(S.DI_FIELD_BASEBAND,          props.get("gsm.version.baseband") or _NA)
 
         # §3.6.3 CPU
         cpu = _parse_cpuinfo(self._results.get("cpuinfo", ""))
@@ -312,9 +404,9 @@ class DeviceInfoModule(IModule):
 
         # §3.6.4 GPU
         gpu = _parse_surfaceflinger(self._results.get("surfaceflinger", ""))
-        s(S.DI_FIELD_GPU_VENDOR,      gpu.get("vendor",   _NA))
-        s(S.DI_FIELD_GPU_RENDERER,    gpu.get("renderer", _NA))
-        s(S.DI_FIELD_OPENGL_VERSION,  gpu.get("version",  _NA))
+        s(S.DI_FIELD_GPU_VENDOR,     gpu.get("vendor",   _NA))
+        s(S.DI_FIELD_GPU_RENDERER,   gpu.get("renderer", _NA))
+        s(S.DI_FIELD_OPENGL_VERSION, gpu.get("version",  _NA))
 
         # §3.6.5 Memory
         mem = _parse_meminfo(self._results.get("meminfo", ""))
@@ -380,6 +472,13 @@ class DeviceInfoModule(IModule):
         for lbl in self._labels.values():
             lbl.setText(_DASH)
 
+    def _make_subtitle(self) -> str:
+        serial = self._serial or "—"
+        return strings.PAGE_SUBTITLE_DEVICE_INFO.format(serial=serial)
+
+    def _update_subtitle(self) -> None:
+        self._subtitle_lbl.setText(self._make_subtitle())
+
     # --------------------------------------------------------- Export
 
     def _on_export(self) -> None:
@@ -420,6 +519,7 @@ class DeviceInfoModule(IModule):
         if ctx is not None:
             self._serial = ctx.serial
             self._model = ctx.model
+            self._update_subtitle()
             self._fetch()
 
     def on_deactivate(self) -> None:
@@ -431,9 +531,11 @@ class DeviceInfoModule(IModule):
         if ctx is not None:
             self._serial = ctx.serial
             self._model = ctx.model
+            self._update_subtitle()
             self._fetch()
         else:
             self._serial = None
+            self._update_subtitle()
             for cid in list(self._pending):
                 self._adb.commands.cancel(cid)
             self._pending.clear()
@@ -442,6 +544,7 @@ class DeviceInfoModule(IModule):
 
     def on_device_disconnected(self) -> None:
         self._serial = None
+        self._update_subtitle()
         for cid in list(self._pending):
             self._adb.commands.cancel(cid)
         self._pending.clear()
@@ -484,7 +587,6 @@ def _parse_cpu_name(cpuinfo: str) -> str:
             if stripped.lower().startswith(field.lower() + ":") \
                or stripped.lower().startswith(field.lower() + "\t"):
                 val = line.split(":", 1)[1].strip() if ":" in line else ""
-                # Skip numeric processor index lines (e.g. "processor : 0")
                 if val and not val.isdigit():
                     return val
     return _NA
@@ -512,8 +614,6 @@ def _parse_df(text: str) -> dict[str, str]:
     if not lines:
         return {}
 
-    # Old Android single-line format: "/data: 52.0G total, 46.5G used, 5.5G available ..."
-    # Appears as the only line, no header.
     def _old_style(ln: str) -> dict[str, str] | None:
         if re.search(r"\btotal\b", ln) and "," in ln:
             tm = re.search(r"([\d.]+\s*[KMGT]?B?)\s+total", ln, re.IGNORECASE)
@@ -541,14 +641,12 @@ def _parse_df(text: str) -> dict[str, str]:
     if len(parts) < 4:
         return {}
 
-    # Human-readable columns already (e.g. "50G", "4.3G", "482M")
     if re.match(r"^[\d.]+[KMGTkmgt]", parts[1]):
         return {
             "total":     parts[1],
             "available": parts[3] if len(parts) > 3 else _NA,
         }
 
-    # Numeric block columns; 512-byte or 1K-byte blocks
     try:
         is_512 = "512" in header
         total_kib = int(parts[1]) // 2 if is_512 else int(parts[1])
@@ -571,23 +669,19 @@ def _parse_battery(text: str) -> dict[str, str]:
 def _parse_display(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
 
-    # Resolution: prefer "real W x H" (most common in dumpsys display)
     m = re.search(r"\breal\s+(\d+)\s+x\s+(\d+)", text)
     if m:
         result["resolution"] = f"{m.group(1)} x {m.group(2)}"
     else:
-        # Newer Android: width=W, height=H in DisplayDeviceInfo
         wm = re.search(r"\bwidth=(\d+)", text)
         hm = re.search(r"\bheight=(\d+)", text)
         if wm and hm:
             result["resolution"] = f"{wm.group(1)} x {hm.group(1)}"
         else:
-            # Fallback: bare "W x H" with plausible screen dimensions
             m2 = re.search(r"\b(\d{3,4})\s+x\s+(\d{3,5})\b", text)
             if m2:
                 result["resolution"] = f"{m2.group(1)} x {m2.group(2)}"
 
-    # Refresh rate
     for pat in (
         r"refreshRate=([\d.]+)",
         r"\bfps=([\d.]+)",
@@ -636,8 +730,8 @@ def _parse_mac_file(text: str) -> str:
     return line if re.match(r"^[0-9a-fA-F:]{17}$", line) else ""
 
 
-def _make_value_label(text: str = _DASH) -> QLabel:
-    lbl = QLabel(text)
+def _make_value_label(text: str = _DASH, parent: Optional[QWidget] = None) -> QLabel:
+    lbl = QLabel(text, parent)
     lbl.setTextInteractionFlags(_SEL)
     lbl.setWordWrap(True)
     lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)

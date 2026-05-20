@@ -1,8 +1,22 @@
-"""Module: Apps (Spec §3.7).
+"""Module: Apps (Spec §3.7; Redesign §5.7).
 
 Lists installed apps via ``pm list packages``. No icon extraction (§9). System
 apps can be disabled but not uninstalled. RAM and Storage bars refresh on
 demand only — no background polling.
+
+Layout (Redesign §5.7):
+    Page header
+    QFrame#ResourceStats — RAM | Storage | spacer | Refresh
+    QSplitter(Horizontal):
+        QFrame#AppsList   (stretchFactor 1.4)
+            card-h: PACKAGES + count hint
+            QFrame#AppsToolbar (search + 2 checkboxes)
+            QTableView (checkbox column + Package + Status)
+            card-f: Delete | Disable | Enable | Export CSV | counter
+        QFrame#AppDetails (stretchFactor 1)
+            card-h: APP DETAILS + ↗
+            empty state OR (meta row + QFormLayout 8 rows + footer)
+            footer: Open | Force-stop | Clear data | Uninstall
 """
 from __future__ import annotations
 
@@ -19,12 +33,13 @@ from PySide6.QtCore import (
     Qt,
     Slot,
 )
-from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
+from PySide6.QtGui import QBrush, QColor, QFont, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFileDialog,
-    QGroupBox,
+    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -32,6 +47,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -43,6 +60,7 @@ from ..core.command_runner import AdbResult, Priority
 from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
+from ..ui.style_utils import page_header
 from ..ui.style_utils import set_variant as _set_variant
 
 _log = get_logger(__name__)
@@ -53,6 +71,7 @@ _RESOURCE_TIMEOUT_S = 10
 _UNINSTALL_TIMEOUT_S = 60
 _PULL_TIMEOUT_S = 120
 _TOGGLE_TIMEOUT_S = 20
+_SINGLE_OP_TIMEOUT_S = 15
 
 _COL_CHECK = 0
 _COL_PACKAGE = 1
@@ -71,6 +90,8 @@ _STATUS_DISABLED = "disabled"
 
 _DISABLED_ENABLED_CODES = {"2", "3", "4"}
 
+_DASH = "—"
+
 
 @dataclass
 class AppEntry:
@@ -79,12 +100,14 @@ class AppEntry:
     app_type: str          # "user" | "system"
     name: str = ""         # display label (defaults to package)
     status: str = _STATUS_ACTIVE
+    version_name: str = ""
+    version_code: str = ""
+    uid: str = ""
 
 
 @dataclass
 class _PendingOp:
-    kind: str              # "list_user"|"list_system"|"dump"|"meminfo"|"df"
-                           # |"uninstall"|"backup_pull"|"disable"|"enable"
+    kind: str
     package: str = ""
     extra: dict = field(default_factory=dict)
 
@@ -124,29 +147,41 @@ class _AppsProxyModel(QSortFilterProxyModel):
         if status == _STATUS_DISABLED and not self._show_disabled:
             return False
         if self._needle:
-            pkg = (src.item(row, _COL_PACKAGE).text() if src.item(row, _COL_PACKAGE) else "").lower()
+            pkg = (src.item(row, _COL_PACKAGE).text()
+                   if src.item(row, _COL_PACKAGE) else "").lower()
             if self._needle not in pkg:
                 return False
         return True
 
 
+def _mono_font(widget: QWidget) -> QFont:
+    f = widget.font()
+    f.setFamily("JetBrains Mono")
+    f.setStyleHint(QFont.StyleHint.Monospace)
+    return f
+
+
 class AppsModule(IModule):
-    """Apps screen (§3.7)."""
+    """Apps screen (§3.7; Redesign §5.7)."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._adb = get_adb_service()
         self._serial: Optional[str] = None
         self._model_name: str = "device"
-        self._apps: dict[str, AppEntry] = {}  # pkg -> entry
-        self._pending: dict[str, _PendingOp] = {}  # cmd_id -> op
-        # Sequential op queue for delete/disable/enable.
+        self._apps: dict[str, AppEntry] = {}
+        self._pending: dict[str, _PendingOp] = {}
+        # Sequential bulk-op state.
         self._op_kind: Optional[str] = None
-        self._op_queue: list[dict] = []  # each: {"package": str, "apk_path": str, ...}
+        self._op_queue: list[dict] = []
         self._op_total: int = 0
         self._op_ok: int = 0
         self._op_fail: int = 0
         self._backup_dir: Optional[Path] = None
+        # Detail-panel currently selected package, if any.
+        self._detail_pkg: Optional[str] = None
+        # Meta-row labels (field key -> QLabel).
+        self._meta_labels: dict[str, QLabel] = {}
         self._build_ui()
         self._wire_signals()
 
@@ -156,66 +191,128 @@ class AppsModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
-        # --- Storage / RAM bars (§3.7.3) -----------------------------------
-        bars = QGroupBox(self)
-        bars_l = QHBoxLayout(bars)
-        bars_l.setContentsMargins(12, 8, 12, 8)
-        bars_l.setSpacing(16)
+        root.addWidget(
+            page_header(
+                strings.LABEL_APPS,
+                strings.PAGE_SUBTITLE_APPS,
+                parent=self,
+            )
+        )
 
+        root.addWidget(self._build_resource_stats())
+
+        self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.setHandleWidth(8)
+        self._splitter.addWidget(self._build_apps_list_card())
+        self._splitter.addWidget(self._build_app_details_card())
+        # Plan §5.7: list stretchFactor 1.4, details 1 → 14 : 10.
+        self._splitter.setStretchFactor(0, 14)
+        self._splitter.setStretchFactor(1, 10)
+        root.addWidget(self._splitter, 1)
+
+        self._set_controls_enabled(False)
+        # TODO (deferred): narrow-screen (<800 width) collapse —
+        # `setChildrenCollapsible(False)` keeps both panes visible; respond to
+        # resizeEvent by toggling `splitter.widget(1).setVisible(False)` once
+        # a back-button is implemented to return from details to list.
+
+    # --- top stats card ----------------------------------------------
+    def _build_resource_stats(self) -> QFrame:
+        frame = QFrame(self)
+        frame.setObjectName("ResourceStats")
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(14, 12, 14, 12)
+        row.setSpacing(16)
+
+        # RAM block
         ram_col = QVBoxLayout()
         ram_col.setSpacing(2)
-        self._ram_title = QLabel(strings.APPS_LABEL_RAM, self)
-        self._ram_bar = QProgressBar(self)
+        self._ram_title = QLabel(strings.APPS_LABEL_RAM, frame)
+        self._ram_title.setProperty("role", "section-label")
+        self._ram_bar = QProgressBar(frame)
         self._ram_bar.setRange(0, 1)
         self._ram_bar.setValue(0)
         self._ram_bar.setTextVisible(False)
-        self._ram_label = QLabel("—", self)
-        self._ram_label.setProperty("secondary", "true")
+        self._ram_bar.setFixedHeight(6)
+        self._ram_label = QLabel(_DASH, frame)
+        self._ram_label.setProperty("role", "hint")
         ram_col.addWidget(self._ram_title)
         ram_col.addWidget(self._ram_bar)
         ram_col.addWidget(self._ram_label)
-        bars_l.addLayout(ram_col, 1)
+        row.addLayout(ram_col, 1)
 
+        # Storage block
         sto_col = QVBoxLayout()
         sto_col.setSpacing(2)
-        self._sto_title = QLabel(strings.APPS_LABEL_STORAGE, self)
-        self._sto_bar = QProgressBar(self)
+        self._sto_title = QLabel(strings.APPS_LABEL_STORAGE, frame)
+        self._sto_title.setProperty("role", "section-label")
+        self._sto_bar = QProgressBar(frame)
         self._sto_bar.setRange(0, 1)
         self._sto_bar.setValue(0)
         self._sto_bar.setTextVisible(False)
-        self._sto_label = QLabel("—", self)
-        self._sto_label.setProperty("secondary", "true")
+        self._sto_bar.setFixedHeight(6)
+        self._sto_label = QLabel(_DASH, frame)
+        self._sto_label.setProperty("role", "hint")
         sto_col.addWidget(self._sto_title)
         sto_col.addWidget(self._sto_bar)
         sto_col.addWidget(self._sto_label)
-        bars_l.addLayout(sto_col, 1)
+        row.addLayout(sto_col, 1)
 
-        self._refresh_btn = QPushButton(strings.APPS_BTN_REFRESH, self)
+        row.addStretch(1)
+        self._refresh_btn = QPushButton(strings.APPS_BTN_REFRESH, frame)
         self._refresh_btn.clicked.connect(self._on_refresh)
-        bars_l.addWidget(self._refresh_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-        root.addWidget(bars)
+        row.addWidget(self._refresh_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        return frame
 
-        # --- Filter row (§3.7.2) -------------------------------------------
-        filt = QHBoxLayout()
-        filt.setSpacing(8)
-        self._search = QLineEdit(self)
+    # --- left card: apps list ---------------------------------------
+    def _build_apps_list_card(self) -> QFrame:
+        card = QFrame(self)
+        card.setObjectName("AppsList")
+        card.setProperty("role", "card")
+        v = QVBoxLayout(card)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+
+        # Card header
+        hdr = QFrame(card)
+        hdr.setProperty("role", "card-h")
+        hdr_row = QHBoxLayout(hdr)
+        hdr_row.setContentsMargins(14, 10, 14, 10)
+        hdr_row.setSpacing(8)
+        title = QLabel(strings.APPS_CARD_PACKAGES, hdr)
+        title.setProperty("role", "section-label")
+        self._count_hint = QLabel(
+            strings.APPS_COUNTER_FMT.format(count=0), hdr
+        )
+        self._count_hint.setProperty("role", "hint")
+        hdr_row.addWidget(title)
+        hdr_row.addStretch(1)
+        hdr_row.addWidget(self._count_hint)
+        v.addWidget(hdr)
+
+        # Toolbar — search + 2 checkboxes (separate frame below header)
+        toolbar = QFrame(card)
+        toolbar.setObjectName("AppsToolbar")
+        tb_row = QHBoxLayout(toolbar)
+        tb_row.setContentsMargins(14, 10, 14, 10)
+        tb_row.setSpacing(10)
+        self._search = QLineEdit(toolbar)
         self._search.setPlaceholderText(strings.APPS_SEARCH_HINT)
         self._search.textChanged.connect(self._on_search)
-        filt.addWidget(self._search, 1)
-
-        self._chk_system = QCheckBox(strings.APPS_CHK_SHOW_SYSTEM, self)
+        tb_row.addWidget(self._search, 1)
+        self._chk_system = QCheckBox(strings.APPS_CHK_SHOW_SYSTEM, toolbar)
         self._chk_system.setChecked(True)
         self._chk_system.toggled.connect(self._on_show_system)
-        filt.addWidget(self._chk_system)
-
-        self._chk_disabled = QCheckBox(strings.APPS_CHK_SHOW_DISABLED, self)
+        tb_row.addWidget(self._chk_system)
+        self._chk_disabled = QCheckBox(strings.APPS_CHK_SHOW_DISABLED, toolbar)
         self._chk_disabled.setChecked(True)
         self._chk_disabled.toggled.connect(self._on_show_disabled)
-        filt.addWidget(self._chk_disabled)
-        root.addLayout(filt)
+        tb_row.addWidget(self._chk_disabled)
+        v.addWidget(toolbar)
 
-        # --- Table ---------------------------------------------------------
-        self._table_model = QStandardItemModel(0, 4, self)
+        # Table
+        self._table_model = QStandardItemModel(0, 4, card)
         self._table_model.setHorizontalHeaderLabels([
             "",
             strings.APPS_COL_PACKAGE,
@@ -223,56 +320,216 @@ class AppsModule(IModule):
             strings.APPS_COL_TYPE,
         ])
         self._table_model.itemChanged.connect(self._on_item_changed)
-
         self._proxy = _AppsProxyModel(self)
         self._proxy.setSourceModel(self._table_model)
 
-        self._table = QTableView(self)
+        self._table = QTableView(card)
         self._table.setModel(self._proxy)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
         self._table.setSortingEnabled(True)
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
         self._table.setColumnHidden(_COL_TYPE, True)
+        hdr_view = self._table.horizontalHeader()
+        hdr_view.setSectionResizeMode(_COL_CHECK, QHeaderView.ResizeMode.ResizeToContents)
+        hdr_view.setSectionResizeMode(_COL_PACKAGE, QHeaderView.ResizeMode.Stretch)
+        hdr_view.setSectionResizeMode(_COL_STATUS, QHeaderView.ResizeMode.ResizeToContents)
+        v.addWidget(self._table, 1)
 
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(_COL_CHECK, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(_COL_PACKAGE, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(_COL_STATUS, QHeaderView.ResizeMode.ResizeToContents)
-        root.addWidget(self._table, 1)
-
-        # --- Action bar ----------------------------------------------------
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        self._delete_btn = QPushButton(strings.APPS_BTN_DELETE, self)
+        # Footer: bulk actions + counter (right)
+        footer = QFrame(card)
+        footer.setProperty("role", "card-f")
+        f_row = QHBoxLayout(footer)
+        f_row.setContentsMargins(14, 10, 14, 10)
+        f_row.setSpacing(8)
+        self._delete_btn = QPushButton(strings.APPS_BTN_DELETE, footer)
         _set_variant(self._delete_btn, "destructive")
         self._delete_btn.clicked.connect(self._on_delete)
-        self._disable_btn = QPushButton(strings.APPS_BTN_DISABLE, self)
+        self._disable_btn = QPushButton(strings.APPS_BTN_DISABLE, footer)
         self._disable_btn.clicked.connect(self._on_disable)
-        self._enable_btn = QPushButton(strings.APPS_BTN_ENABLE, self)
+        self._enable_btn = QPushButton(strings.APPS_BTN_ENABLE, footer)
         self._enable_btn.clicked.connect(self._on_enable)
-        self._export_btn = QPushButton(strings.APPS_BTN_EXPORT, self)
+        self._export_btn = QPushButton(strings.APPS_BTN_EXPORT, footer)
         self._export_btn.clicked.connect(self._on_export)
         for b in (self._delete_btn, self._disable_btn,
                   self._enable_btn, self._export_btn):
-            actions.addWidget(b)
-        actions.addStretch(1)
-        self._status_lbl = QLabel("", self)
-        self._status_lbl.setProperty("secondary", "true")
-        actions.addWidget(self._status_lbl)
-        self._progress = QProgressBar(self)
+            f_row.addWidget(b)
+        f_row.addStretch(1)
+        self._status_lbl = QLabel("", footer)
+        self._status_lbl.setProperty("role", "hint")
+        f_row.addWidget(self._status_lbl)
+        self._progress = QProgressBar(footer)
         self._progress.setRange(0, 0)
-        self._progress.setFixedWidth(160)
+        self._progress.setFixedWidth(120)
+        self._progress.setFixedHeight(6)
+        self._progress.setTextVisible(False)
         self._progress.setVisible(False)
-        actions.addWidget(self._progress)
-        root.addLayout(actions)
+        f_row.addWidget(self._progress)
+        v.addWidget(footer)
 
-        self._set_controls_enabled(False)
+        return card
+
+    # --- right card: app details -------------------------------------
+    def _build_app_details_card(self) -> QFrame:
+        card = QFrame(self)
+        card.setObjectName("AppDetails")
+        card.setProperty("role", "card")
+        v = QVBoxLayout(card)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+
+        # Header: section label + ↗ button
+        hdr = QFrame(card)
+        hdr.setProperty("role", "card-h")
+        hdr_row = QHBoxLayout(hdr)
+        hdr_row.setContentsMargins(14, 10, 14, 10)
+        title = QLabel(strings.APPS_CARD_DETAILS, hdr)
+        title.setProperty("role", "section-label")
+        hdr_row.addWidget(title)
+        hdr_row.addStretch(1)
+        self._detail_expand_btn = QPushButton("↗", hdr)
+        _set_variant(self._detail_expand_btn, "ghost")
+        self._detail_expand_btn.setFixedWidth(28)
+        self._detail_expand_btn.setEnabled(False)
+        self._detail_expand_btn.setToolTip(strings.TOOLTIP_NOT_IMPLEMENTED)
+        hdr_row.addWidget(self._detail_expand_btn)
+        v.addWidget(hdr)
+
+        # Body host (stack-like: empty label OR meta/form/footer)
+        self._detail_body = QWidget(card)
+        body_lay = QVBoxLayout(self._detail_body)
+        body_lay.setContentsMargins(14, 14, 14, 14)
+        body_lay.setSpacing(12)
+
+        # Empty state — centred hint label.
+        self._detail_empty = QLabel(strings.APPS_DETAIL_EMPTY, self._detail_body)
+        self._detail_empty.setProperty("role", "hint")
+        self._detail_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._detail_empty.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        body_lay.addWidget(self._detail_empty)
+
+        # Meta row (icon block + pkg name + badges).
+        self._detail_meta = QWidget(self._detail_body)
+        meta_row = QHBoxLayout(self._detail_meta)
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(10)
+        self._detail_icon = QLabel("·", self._detail_meta)
+        self._detail_icon.setFixedSize(40, 40)
+        self._detail_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._detail_icon.setProperty("role", "section-label")
+        meta_row.addWidget(self._detail_icon)
+        meta_text_col = QVBoxLayout()
+        meta_text_col.setContentsMargins(0, 0, 0, 0)
+        meta_text_col.setSpacing(2)
+        self._detail_pkg_lbl = QLabel("", self._detail_meta)
+        self._detail_pkg_lbl.setFont(_mono_font(self._detail_pkg_lbl))
+        self._detail_pkg_lbl.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._detail_badges = QLabel("", self._detail_meta)
+        self._detail_badges.setProperty("role", "hint")
+        meta_text_col.addWidget(self._detail_pkg_lbl)
+        meta_text_col.addWidget(self._detail_badges)
+        meta_row.addLayout(meta_text_col, 1)
+        body_lay.addWidget(self._detail_meta)
+
+        # Form: 8 meta rows.
+        self._detail_form_host = QWidget(self._detail_body)
+        form = QFormLayout(self._detail_form_host)
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(6)
+        form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        mono_fields = {
+            strings.APPS_META_PACKAGE,
+            strings.APPS_META_VERSION,
+            strings.APPS_META_VERSION_CODE,
+            strings.APPS_META_UID,
+            strings.APPS_META_APK_PATH,
+        }
+        for key in (
+            strings.APPS_META_PACKAGE,
+            strings.APPS_META_LABEL,
+            strings.APPS_META_TYPE,
+            strings.APPS_META_STATUS,
+            strings.APPS_META_VERSION,
+            strings.APPS_META_VERSION_CODE,
+            strings.APPS_META_UID,
+            strings.APPS_META_APK_PATH,
+        ):
+            row_lbl = QLabel(key + ":", self._detail_form_host)
+            row_lbl.setProperty("role", "hint")
+            row_lbl.setFixedWidth(140)
+            val_lbl = QLabel(_DASH, self._detail_form_host)
+            val_lbl.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            val_lbl.setWordWrap(True)
+            if key in mono_fields:
+                val_lbl.setFont(_mono_font(val_lbl))
+            form.addRow(row_lbl, val_lbl)
+            self._meta_labels[key] = val_lbl
+        body_lay.addWidget(self._detail_form_host)
+
+        body_lay.addStretch(1)
+        v.addWidget(self._detail_body, 1)
+
+        # Footer (single-app actions).
+        self._detail_footer = QFrame(card)
+        self._detail_footer.setProperty("role", "card-f")
+        d_row = QHBoxLayout(self._detail_footer)
+        d_row.setContentsMargins(14, 10, 14, 10)
+        d_row.setSpacing(8)
+        self._open_btn = QPushButton(strings.APPS_BTN_OPEN, self._detail_footer)
+        self._open_btn.clicked.connect(self._on_detail_open)
+        self._force_stop_btn = QPushButton(
+            strings.APPS_BTN_FORCE_STOP, self._detail_footer
+        )
+        self._force_stop_btn.clicked.connect(self._on_detail_force_stop)
+        self._clear_data_btn = QPushButton(
+            strings.APPS_BTN_CLEAR_DATA, self._detail_footer
+        )
+        self._clear_data_btn.clicked.connect(self._on_detail_clear_data)
+        self._detail_uninstall_btn = QPushButton(
+            strings.APPS_BTN_UNINSTALL, self._detail_footer
+        )
+        _set_variant(self._detail_uninstall_btn, "destructive")
+        self._detail_uninstall_btn.clicked.connect(self._on_detail_uninstall)
+        for b in (self._open_btn, self._force_stop_btn,
+                  self._clear_data_btn, self._detail_uninstall_btn):
+            d_row.addWidget(b)
+        d_row.addStretch(1)
+        v.addWidget(self._detail_footer)
+
+        self._apply_detail_visibility(selected=False)
+        return card
+
+    def _apply_detail_visibility(self, selected: bool) -> None:
+        self._detail_empty.setVisible(not selected)
+        self._detail_meta.setVisible(selected)
+        self._detail_form_host.setVisible(selected)
+        self._detail_footer.setVisible(selected)
+        for b in (self._open_btn, self._force_stop_btn,
+                  self._clear_data_btn, self._detail_uninstall_btn,
+                  self._detail_expand_btn):
+            b.setEnabled(selected and self._serial is not None and self._op_kind is None)
+        # Expand button stays disabled (not implemented yet).
+        self._detail_expand_btn.setEnabled(False)
 
     def _wire_signals(self) -> None:
         self._adb.commands.commandFinished.connect(self._on_cmd_finished)
         self._adb.commands.commandFailed.connect(self._on_cmd_failed)
+        sel = self._table.selectionModel()
+        if sel is not None:
+            sel.currentRowChanged.connect(self._on_current_row_changed)
 
     # ----------------------------------------------------- IModule lifecycle
     def on_activate(self) -> None:
@@ -311,6 +568,7 @@ class AppsModule(IModule):
         self._status_lbl.setText(strings.APPS_MSG_LOADING)
         self._set_controls_enabled(False)
         self._refresh_meters()
+        self._update_counter()
         self._submit("shell", ["shell", "pm list packages -f -3"],
                      _LIST_TIMEOUT_S, Priority.HIGH,
                      _PendingOp(kind="list_user"))
@@ -356,11 +614,14 @@ class AppsModule(IModule):
         self._table_model.removeRows(0, self._table_model.rowCount())
         self._ram_bar.setRange(0, 1)
         self._ram_bar.setValue(0)
-        self._ram_label.setText("—")
+        self._ram_label.setText(_DASH)
         self._sto_bar.setRange(0, 1)
         self._sto_bar.setValue(0)
-        self._sto_label.setText("—")
+        self._sto_label.setText(_DASH)
         self._status_lbl.setText(strings.APPS_MSG_NO_DEVICE)
+        self._update_counter()
+        self._detail_pkg = None
+        self._apply_detail_visibility(selected=False)
         self._set_controls_enabled(False)
 
     # -------------------------------------------------------- Cmd callbacks
@@ -397,6 +658,15 @@ class AppsModule(IModule):
             self._handle_backup_pull(op, result, success)
         elif op.kind in ("disable", "enable"):
             self._handle_toggle(op, result, success)
+        elif op.kind == "open_app":
+            self._handle_single(op, result, success,
+                                strings.APPS_MSG_OPEN_FAILED)
+        elif op.kind == "force_stop":
+            self._handle_single(op, result, success,
+                                strings.APPS_MSG_FORCE_STOP_FAILED)
+        elif op.kind == "clear_data":
+            self._handle_single(op, result, success,
+                                strings.APPS_MSG_CLEAR_DATA_FAILED)
 
     # --------------------------------------------------------- List parsing
     def _handle_list(
@@ -411,7 +681,6 @@ class AppsModule(IModule):
                     package=pkg, apk_path=apk_path,
                     app_type=kind_str, name=pkg,
                 )
-        # Only finalise once both list ops have returned.
         list_pending = any(
             o.kind in ("list_user", "list_system")
             for o in self._pending.values()
@@ -419,9 +688,13 @@ class AppsModule(IModule):
         if list_pending:
             return
         self._populate_table()
-        # Queue per-package dump for label + status.
+        self._update_counter()
+        # Queue per-package dump for label + status + version + uid.
         for pkg in list(self._apps.keys()):
-            cmd = f"pm dump {pkg} 2>/dev/null | grep -E 'enabled|label'"
+            cmd = (
+                f"pm dump {pkg} 2>/dev/null | "
+                f"grep -E 'enabled|nonLocalizedLabel|versionName|versionCode|userId'"
+            )
             self._submit(
                 "shell", ["shell", cmd], _DUMP_TIMEOUT_S, Priority.NORMAL,
                 _PendingOp(kind="dump", package=pkg),
@@ -483,12 +756,22 @@ class AppsModule(IModule):
         entry = self._apps.get(op.package)
         if entry is None:
             return
-        label, disabled = _parse_pm_dump(result.stdout)
+        info = _parse_pm_dump(result.stdout)
+        label = info["label"]
+        disabled = info["disabled"]
         if label:
             entry.name = label
         if disabled is not None:
             entry.status = _STATUS_DISABLED if disabled else _STATUS_ACTIVE
+        if info["version_name"]:
+            entry.version_name = info["version_name"]
+        if info["version_code"]:
+            entry.version_code = info["version_code"]
+        if info["uid"]:
+            entry.uid = info["uid"]
         self._refresh_row(op.package)
+        if op.package == self._detail_pkg:
+            self._update_detail_panel()
 
     def _refresh_row(self, package: str) -> None:
         entry = self._apps.get(package)
@@ -552,12 +835,23 @@ class AppsModule(IModule):
     # ------------------------------------------------------------- Filters
     def _on_search(self, text: str) -> None:
         self._proxy.set_search(text)
+        self._update_counter()
 
     def _on_show_system(self, checked: bool) -> None:
         self._proxy.set_show_system(checked)
+        self._update_counter()
 
     def _on_show_disabled(self, checked: bool) -> None:
         self._proxy.set_show_disabled(checked)
+        self._update_counter()
+
+    def _update_counter(self) -> None:
+        visible = self._proxy.rowCount() if self._proxy is not None else 0
+        total = len(self._apps)
+        if visible == total:
+            self._count_hint.setText(strings.APPS_COUNTER_FMT.format(count=total))
+        else:
+            self._count_hint.setText(f"{visible} / {total}")
 
     # ---------------------------------------------------------- Selection
     def _selected_entries(self) -> list[AppEntry]:
@@ -581,6 +875,68 @@ class AppsModule(IModule):
         else:
             self._delete_btn.setToolTip("")
 
+    @Slot(QModelIndex, QModelIndex)
+    def _on_current_row_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
+        if not current.isValid():
+            self._detail_pkg = None
+            self._apply_detail_visibility(selected=False)
+            return
+        src = self._proxy.mapToSource(current)
+        row = src.row()
+        chk = self._table_model.item(row, _COL_CHECK)
+        pkg = chk.data(_ROLE_PACKAGE) if chk is not None else None
+        if not pkg:
+            self._detail_pkg = None
+            self._apply_detail_visibility(selected=False)
+            return
+        self._detail_pkg = str(pkg)
+        self._apply_detail_visibility(selected=True)
+        self._update_detail_panel()
+
+    def _update_detail_panel(self) -> None:
+        pkg = self._detail_pkg
+        if pkg is None:
+            return
+        entry = self._apps.get(pkg)
+        if entry is None:
+            return
+        # Icon placeholder: first two letters of package (after last '.').
+        last = pkg.rsplit(".", 1)[-1] or pkg
+        self._detail_icon.setText(last[:2].upper())
+        self._detail_pkg_lbl.setText(entry.name or pkg)
+        badge_parts: list[str] = []
+        badge_parts.append(
+            strings.APPS_TYPE_SYSTEM if entry.app_type == _TYPE_SYSTEM
+            else strings.APPS_TYPE_USER
+        )
+        badge_parts.append(
+            strings.APPS_STATUS_DISABLED if entry.status == _STATUS_DISABLED
+            else strings.APPS_STATUS_ACTIVE
+        )
+        self._detail_badges.setText(" · ".join(badge_parts))
+        S = strings
+        self._meta_labels[S.APPS_META_PACKAGE].setText(entry.package or _DASH)
+        self._meta_labels[S.APPS_META_LABEL].setText(entry.name or _DASH)
+        self._meta_labels[S.APPS_META_TYPE].setText(
+            S.APPS_TYPE_SYSTEM if entry.app_type == _TYPE_SYSTEM else S.APPS_TYPE_USER
+        )
+        self._meta_labels[S.APPS_META_STATUS].setText(
+            S.APPS_STATUS_DISABLED if entry.status == _STATUS_DISABLED
+            else S.APPS_STATUS_ACTIVE
+        )
+        self._meta_labels[S.APPS_META_VERSION].setText(entry.version_name or _DASH)
+        self._meta_labels[S.APPS_META_VERSION_CODE].setText(entry.version_code or _DASH)
+        self._meta_labels[S.APPS_META_UID].setText(entry.uid or _DASH)
+        self._meta_labels[S.APPS_META_APK_PATH].setText(entry.apk_path or _DASH)
+        # Footer buttons: tune by app_type/status.
+        is_user = entry.app_type == _TYPE_USER
+        self._detail_uninstall_btn.setEnabled(
+            is_user and self._serial is not None and self._op_kind is None
+        )
+        self._detail_uninstall_btn.setToolTip(
+            "" if is_user else strings.APPS_TOOLTIP_SYSTEM_DELETE
+        )
+
     # ----------------------------------------------------------- Refresh
     def _on_refresh(self) -> None:
         if not self._serial:
@@ -596,11 +952,12 @@ class AppsModule(IModule):
         self._disable_btn.setEnabled(on)
         self._enable_btn.setEnabled(on)
         self._export_btn.setEnabled(on)
-        # Delete enable depends on selection.
         if not on:
             self._delete_btn.setEnabled(False)
         else:
             self._on_item_changed(QStandardItem())
+        # Detail-panel buttons piggyback on visibility helper.
+        self._apply_detail_visibility(self._detail_pkg is not None)
 
     # ------------------------------------------------------------- Delete
     def _on_delete(self) -> None:
@@ -789,6 +1146,10 @@ class AppsModule(IModule):
             row = self._find_row(op.package)
             if row >= 0:
                 self._table_model.removeRow(row)
+            if self._detail_pkg == op.package:
+                self._detail_pkg = None
+                self._apply_detail_visibility(selected=False)
+            self._update_counter()
         else:
             err = (result.stderr or result.stdout or "rc!=0").strip()[:200]
             _log.warning("uninstall failed pkg=%s err=%s", op.package, err)
@@ -810,7 +1171,6 @@ class AppsModule(IModule):
             self._advance_op(False)
             return
         _log.info("apk backed up pkg=%s dest=%s", op.package, dest)
-        # Proceed to uninstall now that backup succeeded.
         self._submit(
             "uninstall",
             ["shell", f"pm uninstall --user 0 {op.package}"],
@@ -821,7 +1181,6 @@ class AppsModule(IModule):
     def _handle_toggle(
         self, op: _PendingOp, result: AdbResult, success: bool
     ) -> None:
-        # `pm disable-user` / `pm enable` print "Package X new state: ..." on success.
         ok = success and (
             "new state" in (result.stdout or "")
             or "new state" in (result.stderr or "")
@@ -834,6 +1193,8 @@ class AppsModule(IModule):
                     _STATUS_DISABLED if op.kind == "disable" else _STATUS_ACTIVE
                 )
                 self._refresh_row(op.package)
+                if op.package == self._detail_pkg:
+                    self._update_detail_panel()
         else:
             err = (result.stderr or result.stdout or "rc!=0").strip()[:200]
             msg = (
@@ -844,6 +1205,111 @@ class AppsModule(IModule):
             _log.warning("%s failed pkg=%s err=%s", op.kind, op.package, err)
             self._status_lbl.setText(msg.format(pkg=op.package, error=err))
         self._advance_op(ok)
+
+    def _handle_single(
+        self, op: _PendingOp, result: AdbResult, success: bool,
+        fail_msg_fmt: str,
+    ) -> None:
+        if success:
+            _log.info("apps single op %s pkg=%s ok", op.kind, op.package)
+            return
+        err = (result.stderr or result.stdout or "rc!=0").strip()[:200]
+        _log.warning("%s failed pkg=%s err=%s", op.kind, op.package, err)
+        self._status_lbl.setText(
+            fail_msg_fmt.format(pkg=op.package, error=err)
+        )
+
+    # ------------------------------------ Detail-panel single actions
+    def _on_detail_open(self) -> None:
+        pkg = self._detail_pkg
+        if not pkg or not self._serial:
+            return
+        cmd = (
+            "monkey -p " + pkg
+            + " -c android.intent.category.LAUNCHER 1"
+        )
+        self._submit(
+            "shell", ["shell", cmd], _SINGLE_OP_TIMEOUT_S, Priority.HIGH,
+            _PendingOp(kind="open_app", package=pkg),
+        )
+
+    def _on_detail_force_stop(self) -> None:
+        pkg = self._detail_pkg
+        if not pkg or not self._serial:
+            return
+        ans = QMessageBox.question(
+            self, strings.APPS_TITLE_FORCE_STOP,
+            strings.APPS_CONFIRM_FORCE_STOP.format(pkg=pkg),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self._submit(
+            "shell", ["shell", f"am force-stop {pkg}"],
+            _SINGLE_OP_TIMEOUT_S, Priority.HIGH,
+            _PendingOp(kind="force_stop", package=pkg),
+        )
+
+    def _on_detail_clear_data(self) -> None:
+        pkg = self._detail_pkg
+        if not pkg or not self._serial:
+            return
+        ans = QMessageBox.question(
+            self, strings.APPS_TITLE_CLEAR_DATA,
+            strings.APPS_CONFIRM_CLEAR_DATA.format(pkg=pkg),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self._submit(
+            "shell", ["shell", f"pm clear {pkg}"],
+            _SINGLE_OP_TIMEOUT_S, Priority.HIGH,
+            _PendingOp(kind="clear_data", package=pkg),
+        )
+
+    def _on_detail_uninstall(self) -> None:
+        pkg = self._detail_pkg
+        if not pkg or not self._serial or self._op_kind is not None:
+            return
+        entry = self._apps.get(pkg)
+        if entry is None or entry.app_type != _TYPE_USER:
+            return
+        # Reuse bulk uninstall pipeline for single-item.
+        box = QMessageBox(self)
+        box.setWindowTitle(strings.APPS_TITLE_DELETE)
+        box.setText(strings.INSTALL_BACKUP_PROMPT + "\n\n• " + pkg)
+        backup_btn = box.addButton(
+            strings.APPS_BTN_BACKUP_DELETE, QMessageBox.ButtonRole.AcceptRole
+        )
+        no_backup_btn = box.addButton(
+            strings.APPS_BTN_DELETE_NO_BACKUP, QMessageBox.ButtonRole.DestructiveRole
+        )
+        cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel_btn or clicked is None:
+            return
+        do_backup = clicked is backup_btn
+        if do_backup:
+            self._backup_dir = (
+                paths.app_data_root() / "apk_backup"
+                / f"{self._model_name}_{date.today().isoformat()}"
+            )
+            try:
+                self._backup_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                _log.error("backup dir create failed: %s", exc)
+                self._backup_dir = None
+                do_backup = False
+        else:
+            self._backup_dir = None
+        self._begin_op(
+            "uninstall",
+            [{"package": pkg, "apk_path": entry.apk_path,
+              "do_backup": do_backup}],
+        )
 
     # ----------------------------------------------------------- Export CSV
     def _on_export(self) -> None:
@@ -899,11 +1365,7 @@ class AppsModule(IModule):
 # ============================================================ Pure parsers
 
 def _parse_pm_list(text: str) -> list[tuple[str, str]]:
-    """Parse ``pm list packages -f`` output into ``[(apk_path, package), ...]``.
-
-    Output lines look like::
-        package:/data/app/.../base.apk=com.example.app
-    """
+    """Parse ``pm list packages -f`` output → ``[(apk_path, package), ...]``."""
     out: list[tuple[str, str]] = []
     pat = re.compile(r"^package:(.+\.apk)=(.+?)\s*$")
     for line in text.splitlines():
@@ -913,26 +1375,42 @@ def _parse_pm_list(text: str) -> list[tuple[str, str]]:
     return out
 
 
-def _parse_pm_dump(text: str) -> tuple[str, Optional[bool]]:
-    """Extract ``(label, disabled)`` from ``pm dump <pkg>`` (grep'd) output.
-
-    ``disabled`` is ``None`` if the package-level ``enabled=`` line was
-    not found (meaning treat as Active per spec default).
-    """
-    label = ""
-    disabled: Optional[bool] = None
+def _parse_pm_dump(text: str) -> dict:
+    """Extract label, enabled, version, uid from grep'd ``pm dump`` output."""
+    info = {
+        "label": "",
+        "disabled": None,  # type: ignore[var-annotated]
+        "version_name": "",
+        "version_code": "",
+        "uid": "",
+    }
     label_pat = re.compile(r"nonLocalizedLabel=(.+?)(?:\s|$)")
     enabled_pat = re.compile(r"^\s*enabled=(\d+)\s*$")
+    version_name_pat = re.compile(r"versionName=(\S+)")
+    version_code_pat = re.compile(r"versionCode=(\d+)")
+    user_id_pat = re.compile(r"userId=(\d+)")
     for raw in text.splitlines():
-        if not label:
+        if not info["label"]:
             m = label_pat.search(raw)
             if m:
-                label = m.group(1).strip()
-        if disabled is None:
+                info["label"] = m.group(1).strip()
+        if info["disabled"] is None:
             m = enabled_pat.match(raw)
             if m:
-                disabled = m.group(1) in _DISABLED_ENABLED_CODES
-    return label, disabled
+                info["disabled"] = m.group(1) in _DISABLED_ENABLED_CODES
+        if not info["version_name"]:
+            m = version_name_pat.search(raw)
+            if m:
+                info["version_name"] = m.group(1).strip()
+        if not info["version_code"]:
+            m = version_code_pat.search(raw)
+            if m:
+                info["version_code"] = m.group(1).strip()
+        if not info["uid"]:
+            m = user_id_pat.search(raw)
+            if m:
+                info["uid"] = m.group(1).strip()
+    return info
 
 
 def _parse_meminfo(text: str) -> dict[str, int]:
@@ -950,7 +1428,6 @@ def _parse_df(text: str) -> tuple[int, int]:
     if not lines:
         return 0, 0
 
-    # Old Android single-line: "/data: 52.0G total, 46.5G used, 5.5G available"
     if "," in lines[0] and "total" in lines[0]:
         tm = re.search(r"([\d.]+)\s*([KMGT]?)B?\s+total", lines[0], re.IGNORECASE)
         um = re.search(r"([\d.]+)\s*([KMGT]?)B?\s+used", lines[0], re.IGNORECASE)
@@ -967,7 +1444,6 @@ def _parse_df(text: str) -> tuple[int, int]:
     parts = data_line.split()
     if len(parts) < 4:
         return 0, 0
-    # Human-readable columns: total=parts[1], used=parts[2]
     if re.match(r"^[\d.]+[KMGTkmgt]", parts[1]):
         total_kib = _human_to_kib(parts[1])
         used_kib = _human_to_kib(parts[2]) if len(parts) > 2 else 0

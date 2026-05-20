@@ -1,8 +1,18 @@
-"""Module: Device Buttons (Spec §3.5).
+"""Module: Device Buttons (Spec §3.5; Redesign §5.5).
 
 Simulates hardware/software button presses on the active device. All eleven
 buttons from §3.5 are wired up; ADB I/O goes through :class:`AdbService`
 (invariant 1). Strings come from :mod:`core.strings` (invariant 3).
+
+Layout (Redesign §5.5): a fixed ``QGridLayout`` of 4 columns × 3 rows with
+``QPushButton#ButtonTile`` tiles (min-height 64). Tile background, border
+and radius come from the QSS template — no QSS literals here. A "Recent
+actions" card sits below the grid via the shared :func:`card` helper.
+
+Each tile carries an icon-left glyph + label-right text. Real SVG icons
+would be the ideal endpoint (handoff: "icon color = accent via SVG
+``currentColor``"); for v1.0 we fall back to unicode glyphs prefixed to the
+label so the visual hierarchy still reads as icon + text.
 
 Screenshot capture (Spec §3.5.1):
 - Primary path uses ``adb -s <serial> exec-out screencap -p`` via
@@ -25,7 +35,6 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
-    QGroupBox,
     QHeaderView,
     QLabel,
     QMessageBox,
@@ -44,6 +53,7 @@ from ..core.device_context import DeviceContext
 from ..core.imodule import IModule
 from ..core.logger import get_logger
 from ..core.settings_manager import SettingsManager
+from ..ui.style_utils import card, page_header
 
 _log = get_logger(__name__)
 
@@ -54,21 +64,32 @@ _PULL_TIMEOUT_S = 30
 _SHELL_TIMEOUT_S = 15
 _RECENT_MAX = 15
 
-# (label_key, keyevent) — Reboot/Screenshot/Screen Rotate are special-cased.
+_GRID_COLS = 4
+_GRID_ROWS = 3
+
+# (label_key, keyevent, glyph) — Reboot/Screenshot/Screen Rotate special-cased.
 _KEYEVENT_BUTTONS = (
-    ("DB_LABEL_HOME", "KEYCODE_HOME"),
-    ("DB_LABEL_BACK", "KEYCODE_BACK"),
-    ("DB_LABEL_RECENT", "KEYCODE_APP_SWITCH"),
-    ("DB_LABEL_VOLUME_UP", "KEYCODE_VOLUME_UP"),
-    ("DB_LABEL_VOLUME_DOWN", "KEYCODE_VOLUME_DOWN"),
-    ("DB_LABEL_MUTE", "KEYCODE_VOLUME_MUTE"),
-    ("DB_LABEL_CAMERA", "KEYCODE_CAMERA"),
-    ("DB_LABEL_POWER", "KEYCODE_POWER"),
+    ("DB_LABEL_HOME",        "KEYCODE_HOME",        "⌂"),
+    ("DB_LABEL_BACK",        "KEYCODE_BACK",        "◀"),
+    ("DB_LABEL_RECENT",      "KEYCODE_APP_SWITCH",  "▣"),
+    ("DB_LABEL_VOLUME_UP",   "KEYCODE_VOLUME_UP",   "+"),
+    ("DB_LABEL_VOLUME_DOWN", "KEYCODE_VOLUME_DOWN", "−"),
+    ("DB_LABEL_MUTE",        "KEYCODE_VOLUME_MUTE", "⊘"),
+    ("DB_LABEL_CAMERA",      "KEYCODE_CAMERA",      "📷"),
+    ("DB_LABEL_POWER",       "KEYCODE_POWER",       "⏻"),
 )
+
+_GLYPH_REBOOT = "⟳"
+_GLYPH_SCREENSHOT = "⌗"
+_GLYPH_ROTATE = "↻"
+
+
+def _tile_text(glyph: str, label: str) -> str:
+    return f"{glyph}  {label}"
 
 
 class DeviceButtonsModule(IModule):
-    """Device Buttons screen (§3.5)."""
+    """Device Buttons screen (§3.5; Redesign §5.5)."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -93,52 +114,76 @@ class DeviceButtonsModule(IModule):
         root.setContentsMargins(18, 14, 18, 14)
         root.setSpacing(14)
 
+        root.addWidget(
+            page_header(
+                strings.LABEL_DEVICE_BUTTONS,
+                strings.PAGE_SUBTITLE_DEVICE_BUTTONS,
+                parent=self,
+            )
+        )
+
         self._status = QLabel("", self)
         self._status.setWordWrap(True)
-        self._status.setProperty("secondary", "true")
+        self._status.setProperty("role", "hint")
         root.addWidget(self._status)
 
+        # --- 4×3 tile grid (always 4 columns; no resizeEvent breakpoint) ---
         grid_widget = QWidget(self)
         grid_widget.setObjectName("deviceButtonsGrid")
         grid_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         grid = QGridLayout(grid_widget)
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(10)
-        cols = 4
+        for i in range(_GRID_COLS):
+            grid.setColumnStretch(i, 1)
+        for i in range(_GRID_ROWS):
+            grid.setRowStretch(i, 0)
 
-        def _add(label: str, slot, row: int, col: int) -> QPushButton:
-            btn = QPushButton(label, grid_widget)
-            btn.setMinimumHeight(48)
-            btn.setMinimumWidth(120)
+        def _add(text: str, slot, row: int, col: int) -> QPushButton:
+            btn = QPushButton(text, grid_widget)
+            btn.setObjectName("ButtonTile")
+            btn.setMinimumHeight(64)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn.clicked.connect(slot)
             grid.addWidget(btn, row, col)
             self._buttons.append(btn)
             return btn
 
         idx = 0
-        for label_key, keyevent in _KEYEVENT_BUTTONS:
-            label = getattr(strings, label_key)
-            _add(label, lambda _=False, k=keyevent: self._press_key(k),
-                 idx // cols, idx % cols)
+        for label_key, keyevent, glyph in _KEYEVENT_BUTTONS:
+            text = _tile_text(glyph, getattr(strings, label_key))
+            _add(
+                text,
+                lambda _=False, k=keyevent: self._press_key(k),
+                idx // _GRID_COLS, idx % _GRID_COLS,
+            )
             idx += 1
 
-        _add(strings.DB_LABEL_REBOOT, self._on_reboot, idx // cols, idx % cols)
+        _add(
+            _tile_text(_GLYPH_REBOOT, strings.DB_LABEL_REBOOT),
+            self._on_reboot, idx // _GRID_COLS, idx % _GRID_COLS,
+        )
         idx += 1
-        _add(strings.DB_LABEL_SCREENSHOT, self._on_screenshot,
-             idx // cols, idx % cols)
+        _add(
+            _tile_text(_GLYPH_SCREENSHOT, strings.DB_LABEL_SCREENSHOT),
+            self._on_screenshot, idx // _GRID_COLS, idx % _GRID_COLS,
+        )
         idx += 1
-        _add(strings.DB_LABEL_SCREEN_ROTATE, self._on_screen_rotate,
-             idx // cols, idx % cols)
+        _add(
+            _tile_text(_GLYPH_ROTATE, strings.DB_LABEL_SCREEN_ROTATE),
+            self._on_screen_rotate, idx // _GRID_COLS, idx % _GRID_COLS,
+        )
         idx += 1
 
         root.addWidget(grid_widget)
 
-        # Recent actions card (Redesign v1.0).
-        recent_card = QGroupBox(strings.DB_RECENT_TITLE, self)
-        recent_lay = QVBoxLayout(recent_card)
-        recent_lay.setContentsMargins(8, 8, 8, 8)
-        recent_lay.setSpacing(6)
+        # --- Recent actions card --------------------------------------
+        recent_body = QWidget()
+        recent_lay = QVBoxLayout(recent_body)
+        recent_lay.setContentsMargins(0, 0, 0, 0)
+        recent_lay.setSpacing(8)
 
-        self._recent_table = QTableWidget(0, 4, recent_card)
+        self._recent_table = QTableWidget(0, 4, recent_body)
         self._recent_table.setHorizontalHeaderLabels([
             strings.DB_RECENT_COL_TIME,
             strings.DB_RECENT_COL_ACTION,
@@ -157,15 +202,15 @@ class DeviceButtonsModule(IModule):
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self._recent_table.setMinimumHeight(140)
-        recent_lay.addWidget(self._recent_table)
+        recent_lay.addWidget(self._recent_table, 1)
 
-        self._recent_empty = QLabel(strings.DB_RECENT_EMPTY, recent_card)
-        self._recent_empty.setProperty("muted", "true")
+        self._recent_empty = QLabel(strings.DB_RECENT_EMPTY, recent_body)
+        self._recent_empty.setProperty("role", "hint")
         self._recent_empty.setAlignment(Qt.AlignCenter)
         recent_lay.addWidget(self._recent_empty)
         self._recent_table.hide()
 
-        root.addWidget(recent_card, 1)
+        root.addWidget(card(strings.DB_RECENT_TITLE, recent_body, parent=self), 1)
 
     def _wire_signals(self) -> None:
         self._adb.activeDeviceChanged.connect(self._sync_enabled)
@@ -221,7 +266,7 @@ class DeviceButtonsModule(IModule):
 
     @staticmethod
     def _label_for_keycode(keycode: str) -> str:
-        for label_key, kc in _KEYEVENT_BUTTONS:
+        for label_key, kc, _glyph in _KEYEVENT_BUTTONS:
             if kc == keycode:
                 return getattr(strings, label_key)
         return keycode
@@ -370,7 +415,6 @@ class DeviceButtonsModule(IModule):
         info = self._pending.pop(cmd_id, None)
         recent_id = self._cmd_to_recent.pop(cmd_id, None)
         if info is None:
-            # Simple one-shot command (key event, reboot) — just finalize.
             if recent_id is not None:
                 self._finalize_recent(recent_id, success=True)
             return
@@ -493,7 +537,6 @@ class DeviceButtonsModule(IModule):
         action: str,
         serial: str,
     ) -> int:
-        """Insert pending row at top; return entry id for later finalize."""
         ctx = self._adb.active_device
         device_label = ctx.model if ctx and ctx.serial == serial and ctx.model else serial
         entry = {

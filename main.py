@@ -38,7 +38,7 @@ from adb_helper.modules.scrcpy import ScrcpyModule
 from adb_helper.modules.settings import SettingsModule
 from adb_helper.modules.terminal import TerminalModule
 from adb_helper.ui.main_window import MainWindow
-from adb_helper.ui.theme_manager import Theme, ThemeManager
+from adb_helper.ui.theming import Theme, ThemeManager
 
 
 def _module_descriptors() -> List[ModuleDescriptor]:
