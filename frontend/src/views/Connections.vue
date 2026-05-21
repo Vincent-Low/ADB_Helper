@@ -117,8 +117,8 @@ async function selectRow(serial: string) {
     </div>
   </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-    <!-- Wi-Fi Pairing -->
+  <div class="conn-grid">
+    <!-- TOP-LEFT: Wi-Fi Pairing -->
     <section class="card">
       <div class="card-h"><div class="label">Wi-Fi Pairing (Android 11+)</div></div>
       <div class="card-b">
@@ -128,18 +128,23 @@ async function selectRow(serial: string) {
         </div>
         <div class="field">
           <label>Pairing Port</label>
-          <div class="flex items-center gap-2.5 flex-wrap">
-            <input v-model="pairPort" class="input num" placeholder="44331" style="flex:0 0 130px" />
-            <label class="text-text2 text-sm ml-1.5">PIN</label>
-            <input v-model="pairPin" class="input pin" maxlength="6" placeholder="123456" style="flex:0 0 130px" />
-            <button class="btn btn-primary ml-auto" :disabled="pairing" @click="doPair">Pair</button>
+          <div class="row" style="gap:10px">
+            <input v-model="pairPort" class="input num" placeholder="44331"
+                   maxlength="5" inputmode="numeric" pattern="[0-9]*"
+                   style="flex:0 0 130px" />
+            <label class="text-text2 text-sm" style="margin-left:6px">PIN</label>
+            <input v-model="pairPin" class="input pin" maxlength="6"
+                   placeholder="123456" inputmode="numeric"
+                   style="flex:0 0 130px" />
+            <button class="btn btn-primary" style="margin-left:auto"
+                    :disabled="pairing" @click="doPair">Pair</button>
           </div>
         </div>
         <p v-if="pairMsg" class="hint mt-2">{{ pairMsg }}</p>
       </div>
     </section>
 
-    <!-- Wi-Fi Connection -->
+    <!-- TOP-RIGHT: Wi-Fi Connection (Legacy) -->
     <section class="card">
       <div class="card-h"><div class="label">Wi-Fi Connection (Legacy)</div></div>
       <div class="card-b">
@@ -149,16 +154,17 @@ async function selectRow(serial: string) {
         </div>
         <div class="field">
           <label>Port</label>
-          <div class="flex items-center gap-2.5 flex-wrap">
+          <div class="row" style="gap:10px">
             <input v-model="connPort" class="input num" style="flex:0 0 130px" />
-            <button class="btn btn-primary ml-auto" :disabled="connecting" @click="doConnect">Connect</button>
+            <button class="btn btn-primary" style="margin-left:auto"
+                    :disabled="connecting" @click="doConnect">Connect</button>
           </div>
         </div>
         <p v-if="connMsg" class="hint mt-2">{{ connMsg }}</p>
       </div>
     </section>
 
-    <!-- Connected -->
+    <!-- BOTTOM-LEFT: Connected Devices -->
     <section class="card">
       <div class="card-h">
         <div class="label">Connected Devices</div>
@@ -170,7 +176,10 @@ async function selectRow(serial: string) {
         <table class="table">
           <thead>
             <tr>
-              <th>Serial</th><th>IP</th><th>Model</th><th class="w-24">Status</th>
+              <th>Serial</th>
+              <th>IP Address</th>
+              <th>Model</th>
+              <th class="col-status">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -196,36 +205,47 @@ async function selectRow(serial: string) {
         </table>
       </div>
       <div class="card-f">
-        <span class="hint">{{ devices.devices.length }} device(s)</span>
+        <span class="hint">
+          {{ devices.devices.length }} device(s){{ devices.active?.connection_type === 'wifi' ? ' · connected via Wi-Fi' : '' }}
+        </span>
         <button
-          class="btn btn-danger ml-auto"
+          class="btn btn-danger" style="margin-left:auto"
           :disabled="!devices.active"
           @click="devices.active && disconnect(devices.active.serial)"
         >Disconnect</button>
       </div>
     </section>
 
-    <!-- Paired -->
+    <!-- BOTTOM-RIGHT: Paired Devices -->
     <section class="card">
       <div class="card-h"><div class="label">Paired Devices</div></div>
       <div class="card-b" style="padding:0">
         <table class="table">
           <thead>
             <tr>
-              <th>Alias</th><th>IP Address</th><th class="w-36">Connection port</th>
-              <th>Last connected</th><th class="col-actions">Actions</th>
+              <th>Alias</th>
+              <th>IP Address</th>
+              <th class="col-port">Connection port</th>
+              <th>Last connected</th>
+              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="p in devices.paired" :key="p.ip">
+            <tr v-for="p in devices.paired" :key="p.ip" style="height:40px">
               <td>{{ p.alias }}</td>
               <td class="num">{{ p.ip }}</td>
-              <td><input class="input small num" :value="p.connect_port ?? ''" disabled /></td>
+              <td>
+                <input class="input small num" :value="p.connect_port ?? ''"
+                       maxlength="5" inputmode="numeric" pattern="[0-9]*" />
+              </td>
               <td class="num">{{ p.last_connected ?? '—' }}</td>
               <td>
-                <div class="flex items-center gap-1.5">
-                  <button class="btn small" :disabled="!p.connect_port" @click="reconnect(p.ip, p.connect_port)">Connect</button>
-                  <button class="btn small btn-danger" @click="forget(p.ip)">Forget</button>
+                <div class="row" style="gap:6px">
+                  <button class="btn small" style="min-width:74px"
+                          :disabled="!p.connect_port"
+                          @click="reconnect(p.ip, p.connect_port)">Connect</button>
+                  <button class="btn small btn-danger" style="min-width:74px"
+                          @click="forget(p.ip)">Forget</button>
                 </div>
               </td>
             </tr>

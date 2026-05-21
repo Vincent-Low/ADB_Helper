@@ -8,8 +8,8 @@
   /* ---------- Design tokens ---------- */
   :root {
     /* Type */
-    --font-ui: -apple-system, "Segoe UI", "Ubuntu", "Inter", Roboto, system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", "Cascadia Code", "Ubuntu Mono", "Menlo", Consolas, monospace;
+    --font-ui: "Ubuntu Sans", "Segoe UI", sans-serif;
+    --font-mono: "Cascadia Code", "Ubuntu Mono", monospace;
     --fs-xs: 11px;
     --fs-sm: 12px;
     --fs-md: 13px;
@@ -254,6 +254,8 @@
     overflow: auto;
     padding: 20px 24px;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
   }
   .page-header {
     display: flex; align-items: center; gap: 12px;
@@ -276,6 +278,7 @@
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-card);
   }
+
   .card-h {
     display: flex; align-items: center;
     padding: 10px 14px;
@@ -362,9 +365,9 @@
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
   .input.small { height: 28px; padding: 0 8px; }
-  .input.mono { font-family: var(--font-mono); }
+  .input.mono { font-family: var(--font-ui); }
   .input.num { max-width: 110px; }
-  .input.pin { max-width: 130px; font-family: var(--font-mono); letter-spacing: 0.15em; }
+  .input.pin { max-width: 130px; }
 
   /* Button */
   .btn {
@@ -376,7 +379,7 @@
     background: var(--bg-card-2);
     color: var(--text-1);
     cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     font-size: var(--fs-md);
     white-space: nowrap;
   }
@@ -465,7 +468,7 @@
     overflow: auto;
     border-radius: var(--r-md);
   }
-  .table .num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: var(--fs-sm); }
+  .table .num { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
 
   /* ---------- Badges & dots ---------- */
   .badge {
@@ -544,6 +547,21 @@
     background: transparent; border: 0; outline: 0;
     color: var(--text-1);
     font-family: var(--font-mono);
+    caret-color: transparent;
+  }
+  .term-cursor {
+    display: inline-block;
+    width: 8px; height: 15px;
+    background: var(--accent);
+    opacity: 1;
+    animation: termBlink 1.1s step-end infinite;
+    flex: none;
+    border-radius: 1px;
+  }
+  .term-prompt input:focus { caret-color: var(--accent); }
+  @keyframes termBlink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
   }
 
   /* ---------- Logcat command preview ---------- */
@@ -565,8 +583,37 @@
   .codeblock .line { display: block; }
   .codeblock .line.cont { padding-left: 2ch; }
 
-  .install-status {
-    display: flex; align-items: center; gap: 8px;
+  /* Theme button group */
+  .theme-btn-group {
+    display: inline-flex;
+    width: fit-content;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: var(--r-md);
+    padding: 3px;
+    gap: 3px;
+  }
+  .theme-btn {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: calc(var(--r-md) - 1px);
+    color: var(--text-2);
+    font-size: var(--fs-sm);
+    padding: 4px 14px;
+    cursor: pointer;
+    height: 26px;
+    display: inline-flex; align-items: center;
+    transition: background .1s, color .1s;
+  }
+  .theme-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+  .theme-btn[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+
+  .install-status {    display: flex; align-items: center; gap: 8px;
     padding: 8px 12px;
     background: var(--bg-card-2);
     border: 1px solid var(--border);
@@ -575,7 +622,7 @@
     font-size: var(--fs-sm);
     min-height: 32px;
   }
-  .install-status .status-text { font-family: var(--font-mono); font-size: var(--fs-sm); }
+  .install-status .status-text { font-size: var(--fs-sm); }
   .install-status.is-running { color: var(--accent); border-color: var(--accent-soft); }
   .install-status.is-running .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .install-status.is-done    .dot { background: var(--success); box-shadow: 0 0 0 3px rgba(52,211,153,0.18); }
@@ -609,7 +656,7 @@
     text-transform: uppercase;
     font-weight: 600;
   }
-  .stat .val { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-2); }
+  .stat .val { font-size: var(--fs-sm); color: var(--text-2); }
 
   /* ---------- Info list ---------- */
   .info-list {
@@ -619,7 +666,7 @@
     column-gap: 16px;
   }
   .info-list dt { color: var(--text-2); font-size: var(--fs-sm); }
-  .info-list dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-1); overflow-wrap: anywhere; }
+  .info-list dd { margin: 0; font-size: var(--fs-sm); color: var(--text-1); overflow-wrap: anywhere; }
 
   /* ---------- Button grid ---------- */
   .btn-grid {
@@ -670,10 +717,10 @@
     border: 1px solid var(--border);
     display: grid; place-items: center;
     color: var(--accent);
-    font-weight: 700; font-family: var(--font-mono);
+    font-weight: 700;
   }
   .pkg-name { font-weight: 600; font-size: var(--fs-md); overflow-wrap: anywhere; }
-  .pkg-sub { color: var(--text-2); font-size: var(--fs-sm); font-family: var(--font-mono); }
+  .pkg-sub { color: var(--text-2); font-size: var(--fs-sm); }
 
   /* misc */
   .empty {
@@ -685,7 +732,6 @@
   .empty.h-3row { min-height: 132px; }
   .hint { color: var(--text-2); font-size: var(--fs-sm); }
   .kbd {
-    font-family: var(--font-mono);
     font-size: var(--fs-xs);
     background: var(--bg-elevated);
     padding: 2px 6px;
@@ -704,31 +750,67 @@
   .toggle-meta {
     display: flex; flex-direction: column; gap: 2px;
   }
-  .meta-row {
-    display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 12px;
-    align-items: center;
-    padding: 6px 0;
+  .detail-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
+  .detail-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .detail-table tr:last-child td { border-bottom: 0; }
+  .detail-table td:first-child { color: var(--text-2); width: 110px; white-space: nowrap; flex: none; }
+  .detail-table td:last-child  { color: var(--text-1); overflow-wrap: anywhere; }
+  .detail-table tr:nth-child(even) td { background: var(--bg-row-alt); }
+  .detail-table tr.section-head td {
+    background: var(--bg-card-2);
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
   }
-  .meta-row > .lbl { color: var(--text-2); font-size: var(--fs-sm); }
-  .meta-row > .val { color: var(--text-1); font-size: var(--fs-sm); font-family: var(--font-mono); }
 
   /* Tabbed style for dependencies / paired */
-  .col-action-cell { width: 120px; }
+  .col-action-cell { width: 130px; }
+
+  /* Settings / Logcat form rows */
+  .meta-row {
+    display: grid;
+    grid-template-columns: 148px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-row:last-child { border-bottom: 0; }
+  .meta-row:nth-child(even) { background: var(--bg-row-alt); }
+  .meta-row > .lbl { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
   .col-num { width: 110px; text-align: right; }
   .col-port { width: 140px; }
+  .col-installed { width: 130px; }
+  .col-latest   { width: 80px; }
+  .col-dep-status { width: 160px; }
   .col-status { width: 90px; }
   .col-type { width: 80px; }
+  .table tbody tr.row-sep td { border-bottom: 2px solid var(--border-strong); }
+
+  /* Sortable table headers */
+  .table th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+  .table th.sortable:hover { color: var(--text-1); background: var(--bg-elevated); }
+  .table th.sortable::after { content: "⇅"; margin-left: 5px; opacity: 0.3; font-size: 10px; }
+  .table th.sortable[aria-sort="ascending"]::after  { content: "↑"; opacity: 1; color: var(--accent); }
+  .table th.sortable[aria-sort="descending"]::after { content: "↓"; opacity: 1; color: var(--accent); }
 
   /* hide unused pages */
   .page { display: none; }
   .page.active { display: block; }
   .view-content > .card + .card,
-.installer > .card + .card,
-main > .card + .card {
-  margin-top: 16px;
-}
+  .installer > .card + .card,
+  main > .card + .card,
+  .grid-2 > div > .card + .card,
+  .col > .card + .card {
+    margin-top: 16px;
+  }
 </style>
 </head>
 <body>
@@ -766,14 +848,13 @@ main > .card + .card {
           <span class="seg">Transport: <strong>Wi-Fi</strong></span>
           <span class="sep"></span>
           <span class="seg">Android <strong>16</strong> · API 36</span>
-          <span class="right">
-            <span class="seg" title="Battery">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line><line x1="6" y1="11" x2="14" y2="11"></line></svg>
-              <strong>78%</strong>
-            </span>
-            <span class="sep"></span>
-            <span class="seg">ADB <strong style="color:var(--success)">running</strong></span>
+          <span class="sep"></span>
+          <span class="seg" title="Battery">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line><line x1="6" y1="11" x2="14" y2="11"></line></svg>
+            <strong>78%</strong>
           </span>
+          <span class="sep"></span>
+          <span class="seg">ADB <strong style="color:var(--success)">running</strong></span>
         </footer>
       </div>
     </div>
@@ -827,11 +908,15 @@ function showPage(id) {
   const main = document.getElementById('main');
   main.innerHTML = PAGES[id]();
   main.scrollTo({top:0});
-  // Wire Theme select on Settings page
-  const sel = main.querySelector('.theme-select');
-  if (sel) {
-    sel.value = localStorage.getItem('adbh-theme') || 'dark';
-    sel.addEventListener('change', () => applyTheme(sel.value));
+  initSortableTables(main);
+  // Wire Theme buttons on Settings page
+  const btns = main.querySelectorAll('.theme-btn');
+  if (btns.length) {
+    const cur = localStorage.getItem('adbh-theme') || 'dark';
+    btns.forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.themeSet === cur));
+      b.addEventListener('click', () => applyTheme(b.dataset.themeSet));
+    });
   }
 }
 
@@ -867,7 +952,7 @@ connections: () => `
         <div class="field">
           <label>Pairing Port</label>
           <div class="row" style="gap:10px">
-            <input class="input num" placeholder="44331" style="flex:0 0 130px">
+            <input class="input num" placeholder="44331" maxlength="5" pattern="[0-9]*" inputmode="numeric" style="flex:0 0 130px">
             <label style="color:var(--text-2); font-size:var(--fs-sm); margin-left:6px">PIN</label>
             <input class="input pin" placeholder="123456" maxlength="6" style="flex:0 0 130px">
             <button class="btn btn-primary" style="margin-left:auto">Pair</button>
@@ -937,12 +1022,12 @@ connections: () => `
             <tr>
               <td>Wi-Fi Device</td>
               <td class="num">192.168.1.200</td>
-              <td><input class="input small num" value="40787"></td>
+              <td><input class="input small num" value="40787" maxlength="5" pattern="[0-9]*" inputmode="numeric"></td>
               <td class="num">2026-05-19 16:59:16</td>
               <td>
                 <div class="row" style="gap:6px">
-                  <button class="btn small">Connect</button>
-                  <button class="btn small btn-danger">Forget</button>
+                  <button class="btn small" style="min-width:74px">Connect</button>
+                  <button class="btn small btn-danger" style="min-width:74px">Forget</button>
                 </div>
               </td>
             </tr>
@@ -954,7 +1039,8 @@ connections: () => `
 `,
 
 terminal: () => `
-  <div class="page-header">
+  <div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:0">
+  <div class="page-header" style="flex:none; margin-bottom:0">
     <h1 class="page-title">Terminal</h1>
     <span class="page-sub">adb shell · 192.168.1.200:40787</span>
     <div class="page-actions">
@@ -963,7 +1049,7 @@ terminal: () => `
     </div>
   </div>
 
-  <div style="display:grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; height: calc(100vh - 240px); min-height: 460px;">
+  <div style="display:grid; grid-template-columns: minmax(0, 1fr) 260px; gap:16px; flex:1; min-height:0; margin-top:16px">
     <section class="card" style="display:flex; flex-direction:column; min-height:0">
       <div class="card-h">
         <div class="label">Output</div>
@@ -986,9 +1072,8 @@ package:org.telegram.messenger
 package:com.spotify.music
 a34x:/ $ </div>
         <div class="term-prompt">
-          <span class="pfx">192.168.1.200:40787:/ $</span>
-          <input placeholder="Type a command and press Enter">
-          <span class="kbd">Ctrl+L</span>
+          <span class="term-cursor"></span>
+          <input>
         </div>
       </div>
     </section>
@@ -1012,6 +1097,7 @@ a34x:/ $ </div>
         </div>
       </div>
     </section>
+  </div>
   </div>
 `,
 
@@ -1157,12 +1243,13 @@ scrcpy: () => `
 `,
 
 buttons: () => `
-  <div class="page-header">
+  <div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:16px">
+  <div class="page-header" style="flex:none; margin-bottom:0">
     <h1 class="page-title">Device Buttons</h1>
     <span class="page-sub">Send virtual key events to the device</span>
   </div>
 
-  <section class="card">
+  <section class="card" style="flex:none">
     ${sectionH('Keys')}
     <div class="card-b">
       <div class="btn-grid">
@@ -1185,17 +1272,16 @@ buttons: () => `
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" style="flex:1; min-height:0; display:flex; flex-direction:column">
     ${sectionH('Recent actions', '<button class="btn small btn-ghost">Clear history</button>')}
-    <div class="card-b" style="padding:0">
-      <div class="table-scroll" style="max-height:340px">
-        <table class="table">
-          <thead><tr><th>Time</th><th>Action</th><th>Result</th></tr></thead>
-          <tbody><tr><td colspan="3"><div class="empty">No actions yet.</div></td></tr></tbody>
-        </table>
-      </div>
+    <div class="card-b" style="padding:0; flex:1; overflow:auto">
+      <table class="table">
+        <thead><tr><th>Time</th><th>Action</th><th>Result</th></tr></thead>
+        <tbody><tr><td colspan="3"><div class="empty">No actions yet.</div></td></tr></tbody>
+      </table>
     </div>
   </section>
+  </div>
 `,
 
 info: () => `
@@ -1203,81 +1289,89 @@ info: () => `
     <h1 class="page-title">Device Info</h1>
     <span class="page-sub">Auto-collected from <span class="num">SM-A346E</span></span>
     <div class="page-actions">
-      <button class="btn">Refresh</button>
       <button class="btn">Export to TXT</button>
+      <button class="btn">Refresh</button>
     </div>
   </div>
 
-  <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:16px;">
-    <section class="card">
-      ${sectionH('Device')}
-      <div class="card-b">
-        <dl class="info-list">
-          <dt>Manufacturer</dt><dd>samsung</dd>
-          <dt>Model</dt><dd>SM-A346E</dd>
-          <dt>Device codename</dt><dd>a34x</dd>
-          <dt>Brand</dt><dd>samsung</dd>
-          <dt>Serial number</dt><dd>192.168.1.200:40787</dd>
-        </dl>
-      </div>
-    </section>
+  <div style="display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start">
+    <!-- Left column: Device + CPU -->
+    <div style="display:flex; flex-direction:column; gap:16px">
+      <section class="card">
+        ${sectionH('Device')}
+        <table class="detail-table">
+          <tbody>
+            <tr><td>Manufacturer</td><td>samsung</td></tr>
+            <tr><td>Model</td><td>SM-A346E</td></tr>
+            <tr><td>Codename</td><td>a34x</td></tr>
+            <tr><td>Brand</td><td>samsung</td></tr>
+            <tr><td>Serial</td><td>192.168.1.200:40787</td></tr>
+          </tbody>
+        </table>
+      </section>
 
+      <section class="card">
+        ${sectionH('CPU')}
+        <table class="detail-table">
+          <tbody>
+            <tr><td>Architecture</td><td>arm64-v8a</td></tr>
+            <tr><td>Cores</td><td>8</td></tr>
+            <tr><td>Min frequency</td><td>500 MHz</td></tr>
+            <tr><td>Max frequency</td><td>2000 MHz</td></tr>
+            <tr><td>Hardware name</td><td>N/A</td></tr>
+            <tr><td>Model name</td><td>N/A</td></tr>
+            <tr><td>Governor</td><td>N/A</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        ${sectionH('GPU')}
+        <table class="detail-table">
+          <tbody>
+            <tr><td>Vendor</td><td>—</td></tr>
+            <tr><td>Renderer</td><td>—</td></tr>
+            <tr><td>OpenGL ES</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- Right column: System -->
     <section class="card">
       ${sectionH('System')}
-      <div class="card-b">
-        <dl class="info-list">
-          <dt>Android version</dt><dd>16</dd>
-          <dt>API level</dt><dd>36</dd>
-          <dt>Security patch level</dt><dd>2026-04-05</dd>
-          <dt>Build number</dt><dd>BP2A.250605.031.A3.A346EXXSEEZC7</dd>
-          <dt>Build fingerprint</dt><dd>samsung/a34xdxx/a34x:16/BP2A.250605.031.A3/A346EXXSEEZC7:user/release-keys</dd>
-          <dt>Build type</dt><dd>user</dd>
-          <dt>Build date</dt><dd>Tue Apr  7 15:56:44 KST 2026</dd>
-          <dt>Bootloader</dt><dd>A346EXXSEEZC7</dd>
-          <dt>Baseband / Radio</dt><dd>A346EXXSEEZC7,A346EXXSEEZC7</dd>
-        </dl>
-      </div>
-    </section>
-
-    <section class="card">
-      ${sectionH('CPU')}
-      <div class="card-b">
-        <dl class="info-list">
-          <dt>CPU hardware name</dt><dd>N/A</dd>
-          <dt>CPU model name</dt><dd>N/A</dd>
-          <dt>CPU architecture</dt><dd>arm64-v8a</dd>
-          <dt>Number of cores</dt><dd>8</dd>
-          <dt>CPU governor</dt><dd>N/A</dd>
-          <dt>Min / Max frequency</dt><dd>500 MHz / 2000 MHz</dd>
-        </dl>
-      </div>
-    </section>
-
-    <section class="card">
-      ${sectionH('GPU')}
-      <div class="card-b">
-        <dl class="info-list">
-          <dt>Vendor</dt><dd>—</dd>
-          <dt>Renderer</dt><dd>—</dd>
-          <dt>OpenGL ES version</dt><dd>—</dd>
-        </dl>
-      </div>
+      <table class="detail-table">
+        <tbody>
+          <tr class="section-head"><td colspan="2">Version</td></tr>
+          <tr><td>Android</td><td>16</td></tr>
+          <tr><td>API level</td><td>36</td></tr>
+          <tr><td>Security patch</td><td>2026-04-05</td></tr>
+          <tr class="section-head"><td colspan="2">Build</td></tr>
+          <tr><td>Build number</td><td>BP2A.250605.031.A3.A346EXXSEEZC7</td></tr>
+          <tr><td>Fingerprint</td><td>samsung/a34xdxx/a34x:16/BP2A.250605.031.A3/A346EXXSEEZC7:user/release-keys</td></tr>
+          <tr><td>Type</td><td>user</td></tr>
+          <tr><td>Date</td><td>Tue Apr  7 15:56:44 KST 2026</td></tr>
+          <tr class="section-head"><td colspan="2">Firmware</td></tr>
+          <tr><td>Bootloader</td><td>A346EXXSEEZC7</td></tr>
+          <tr><td>Baseband</td><td>A346EXXSEEZC7,A346EXXSEEZC7</td></tr>
+        </tbody>
+      </table>
     </section>
   </div>
 `,
 
 apps: () => `
-  <div class="page-header">
+  <div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:0">
+  <div class="page-header" style="flex:none">
     <h1 class="page-title">Apps</h1>
     <span class="page-sub">503 packages on device</span>
     <div class="page-actions">
-      <button class="btn">Export to CSV</button>
       <button class="btn">Refresh</button>
     </div>
   </div>
 
-  <section class="card">
-    <div class="card-b" style="display:grid; grid-template-columns: 1fr 1fr auto; gap:24px; align-items:center;">
+  <section class="card" style="flex:none; margin-bottom:16px">
+    <div class="card-b" style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; align-items:center;">
       <div class="stat">
         <div class="lbl">RAM</div>
         <div class="progress"><i style="width:68%"></i></div>
@@ -1288,11 +1382,10 @@ apps: () => `
         <div class="progress"><i style="width:39%"></i></div>
         <div class="val">Used 42.6 GB / 108.2 GB</div>
       </div>
-      <button class="btn">↻ Refresh</button>
     </div>
   </section>
 
-  <div class="split" style="margin-top:16px; height: calc(100vh - 360px); min-height: 480px;">
+  <div class="split" style="flex:1; min-height:0">
     <!-- LEFT: list -->
     <section class="card" style="display:flex; flex-direction:column; min-height:0">
       <div class="card-h">
@@ -1308,36 +1401,38 @@ apps: () => `
         <table class="table">
           <thead><tr>
             <th class="col-check"><input type="checkbox" class="check"></th>
-            <th>Package name</th>
-            <th class="col-status">Status</th>
-            <th class="col-type">Type</th>
+            <th class="sortable">Package name</th>
+            <th class="col-status sortable">Status</th>
+            <th class="col-type sortable">Type</th>
+            <th class="col-mb sortable">Size, MB</th>
           </tr></thead>
           <tbody id="apps-tbody">
             ${[
-              ['android','Active','system'],
-              ['android.auto_generated_rro_product__','Active','system'],
-              ['android.autoinstalls.config.samsung','Active','system'],
-              ['app.hiddify.com','Active','user'],
-              ['app.revanced.android.gms','Active','user'],
-              ['app.revanced.android.youtube','Active','user'],
-              ['com.android.apps.tag','Active','system'],
-              ['com.android.avatarpicker','Active','system'],
-              ['com.android.backupconfirm','Active','system'],
-              ['com.android.bips','Active','system'],
-              ['com.android.bluetooth','Active','system'],
-              ['com.android.bluetoothmidiservice','Active','system'],
-              ['com.android.bookmarkprovider','Active','system'],
-              ['com.android.calllogbackup','Active','system'],
-              ['com.android.cameraextensions','Active','system'],
-              ['com.android.carrierconfig','Active','system'],
-              ['com.android.chrome','Active','user'],
-              ['com.android.contacts','Active','system'],
+              ['android','Active','system','0.1'],
+              ['android.auto_generated_rro_product__','Active','system','0.0'],
+              ['android.autoinstalls.config.samsung','Active','system','0.2'],
+              ['app.hiddify.com','Active','user','38.4'],
+              ['app.revanced.android.gms','Active','user','12.1'],
+              ['app.revanced.android.youtube','Active','user','112.4'],
+              ['com.android.apps.tag','Active','system','1.2'],
+              ['com.android.avatarpicker','Active','system','4.8'],
+              ['com.android.backupconfirm','Active','system','0.3'],
+              ['com.android.bips','Active','system','6.5'],
+              ['com.android.bluetooth','Active','system','18.7'],
+              ['com.android.bluetoothmidiservice','Active','system','0.8'],
+              ['com.android.bookmarkprovider','Active','system','0.4'],
+              ['com.android.calllogbackup','Active','system','0.6'],
+              ['com.android.cameraextensions','Active','system','2.1'],
+              ['com.android.carrierconfig','Active','system','0.5'],
+              ['com.android.chrome','Active','user','144.2'],
+              ['com.android.contacts','Active','system','9.3'],
             ].map((row, i) => `
               <tr ${row[0]==='app.revanced.android.youtube' ? 'class="selected"' : ''}>
                 <td><input type="checkbox" class="check"></td>
                 <td><span class="pkg-sub" style="color:var(--text-1)">${row[0]}</span></td>
                 <td><span class="badge ok"><span class="dot ok"></span>${row[1]}</span></td>
                 <td><span class="hint">${row[2]}</span></td>
+                <td class="col-mb">${row[3]}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -1356,12 +1451,9 @@ apps: () => `
     <aside class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden">
       <div class="card-h">
         <div class="label">App details</div>
-        <div class="right">
-          <button class="btn small btn-ghost" title="Open in Play">↗</button>
-        </div>
       </div>
-      <div class="card-b" style="overflow:auto; display:flex; flex-direction:column; gap:14px">
-        <div class="app-meta">
+      <div class="card-b" style="overflow:auto; flex:1; display:flex; flex-direction:column; gap:0; padding:0">
+        <div class="app-meta" style="padding:14px; border-bottom:1px solid var(--border)">
           <div class="app-ico">YT</div>
           <div>
             <div class="pkg-name">YouTube ReVanced</div>
@@ -1374,28 +1466,34 @@ apps: () => `
           </div>
         </div>
 
-        <div>
-          <div class="meta-row"><span class="lbl">Install date</span><span class="val">2025-12-04 14:21</span></div>
-          <div class="meta-row"><span class="lbl">Updated</span><span class="val">2026-04-12 09:08</span></div>
-          <div class="meta-row"><span class="lbl">UID</span><span class="val">10293</span></div>
-          <div class="meta-row"><span class="lbl">Target SDK</span><span class="val">34</span></div>
-          <div class="meta-row"><span class="lbl">Min SDK</span><span class="val">24</span></div>
-          <div class="meta-row"><span class="lbl">APK size</span><span class="val">112.4 MB</span></div>
-          <div class="meta-row"><span class="lbl">Data size</span><span class="val">38.9 MB</span></div>
-          <div class="meta-row"><span class="lbl">Path</span><span class="val" style="overflow-wrap:anywhere">/data/app/~~aB12.../app.revanced.android.youtube-1/base.apk</span></div>
-        </div>
-
-        <div>
-          <div class="meta-row"><span class="lbl">Permissions</span><span class="val">23 granted · 2 denied</span></div>
-        </div>
+        <table class="detail-table">
+          <tbody>
+            <tr class="section-head"><td colspan="2">Installation</td></tr>
+            <tr><td>Install date</td><td>2025-12-04 14:21</td></tr>
+            <tr><td>Updated</td><td>2026-04-12 09:08</td></tr>
+            <tr class="section-head"><td colspan="2">Properties</td></tr>
+            <tr><td>UID</td><td>10293</td></tr>
+            <tr><td>Target SDK</td><td>34</td></tr>
+            <tr><td>Min SDK</td><td>24</td></tr>
+            <tr class="section-head"><td colspan="2">Storage</td></tr>
+            <tr><td>APK size</td><td>112.4 MB</td></tr>
+            <tr><td>Data size</td><td>38.9 MB</td></tr>
+            <tr><td>Path</td><td>/data/app/~~aB12.../app.revanced.android.youtube-1/base.apk</td></tr>
+            <tr class="section-head"><td colspan="2">Permissions</td></tr>
+            <tr><td>Granted</td><td>23</td></tr>
+            <tr><td>Denied</td><td>2</td></tr>
+          </tbody>
+        </table>
       </div>
       <div class="card-f">
         <button class="btn small">Open</button>
         <button class="btn small">Force-stop</button>
         <button class="btn small">Clear data</button>
+        <button class="btn small">Open folder</button>
         <button class="btn btn-danger small" style="margin-left:auto">Uninstall</button>
       </div>
     </aside>
+  </div>
   </div>
 `,
 
@@ -1438,7 +1536,7 @@ logcat: () => `
 
     <section class="card">
       ${sectionH('Configuration')}
-      <div class="card-b">
+      <div class="card-b" style="padding:0">
         <div class="meta-row">
           <span class="lbl">Save folder</span>
           <div class="row" style="gap:6px">
@@ -1460,91 +1558,84 @@ settings: () => `
     <span class="page-sub">App preferences & dependencies</span>
   </div>
 
-  <section class="card">
-    ${sectionH('About')}
-    <div class="card-b" style="display:flex; align-items:center; gap:12px">
-      <div class="app-ico" style="width:40px; height:40px; border-radius:10px; font-size:14px">A</div>
-      <div>
-        <div style="font-weight:600">ADB_Helper</div>
-        <div class="hint">v1.0.0 · Python 3.12 · PySide6 · Qt 6</div>
+  <div style="display:grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap:16px; align-items:stretch">
+    <section class="card" style="display:flex; flex-direction:column">
+      ${sectionH('General')}
+      <div class="card-b" style="flex:1; padding:0">
+        <div class="meta-row">
+          <span class="lbl">Theme</span>
+          <div class="theme-btn-group" role="group">
+            <button class="theme-btn" data-theme-set="light">Light</button>
+            <button class="theme-btn" data-theme-set="auto">Auto</button>
+            <button class="theme-btn" data-theme-set="dark">Dark</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="lbl">Screenshots folder</span>
+          <div class="row" style="gap:6px"><input class="input" value="/home/ashadrin/.config/adb_helper/screenshots" style="flex:1"><button class="btn">Browse…</button></div>
+        </div>
+        <div class="meta-row">
+          <span class="lbl">Logcat folder</span>
+          <div class="row" style="gap:6px"><input class="input" value="/home/ashadrin/.config/adb_helper/logcat" style="flex:1"><button class="btn">Browse…</button></div>
+        </div>
+        <div class="meta-row">
+          <span class="lbl">ADB command timeout</span>
+          <div class="row" style="gap:6px"><input class="input num" value="30" style="max-width:64px"><span class="hint">seconds</span></div>
+        </div>
+        <div class="meta-row">
+          <span class="lbl">Log level</span>
+          <div class="row" style="gap:6px">
+            <select class="select" style="max-width:110px"><option>Debug</option><option>Info</option><option>Warning</option><option selected>Error</option></select>
+            <button class="btn">Open logs folder</button>
+          </div>
+        </div>
       </div>
-      <div class="row" style="margin-left:auto; gap:6px">
-        <button class="btn small">Release notes</button>
+      <div class="card-f">
+        <button class="btn">Open app folder</button>
+      </div>
+    </section>
+
+    <section class="card" style="display:flex; flex-direction:column">
+      ${sectionH('Installed dependencies')}
+      <div class="card-b" style="padding:0; flex:1">
+        <table class="table">
+          <thead><tr>
+            <th>Component</th>
+            <th class="col-installed">Installed</th>
+            <th class="col-latest">Latest</th>
+            <th class="col-dep-status">Status</th>
+            <th class="col-action-cell">Action</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>ADB (platform-tools)</td>
+              <td><span class="hint">Not installed</span></td>
+              <td>35.0.2</td>
+              <td><span class="badge err"><span class="dot err"></span>Missing</span></td>
+              <td><button class="btn small btn-primary">Install</button></td>
+            </tr>
+            <tr>
+              <td>scrcpy</td>
+              <td>4.0</td>
+              <td>4.0</td>
+              <td><span class="badge ok"><span class="dot ok"></span>Up to date</span></td>
+              <td><button class="btn small" disabled>Update</button></td>
+            </tr>
+            <tr class="row-sep">
+              <td>bundletool</td>
+              <td>1.18.3</td>
+              <td>1.18.5</td>
+              <td><span class="badge warn"><span class="dot warn"></span>Update available</span></td>
+              <td><button class="btn small">Update</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-f">
         <button class="btn small">Check for updates</button>
       </div>
-    </div>
-  </section>
-
-  <section class="card">
-    ${sectionH('Installed dependencies')}
-    <div class="card-b" style="padding:0">
-      <table class="table">
-        <thead><tr>
-          <th>Component</th>
-          <th>Installed</th>
-          <th>Latest</th>
-          <th class="col-status">Status</th>
-          <th class="col-action-cell">Action</th>
-        </tr></thead>
-        <tbody>
-          <tr>
-            <td>ADB (platform-tools)</td>
-            <td><span class="hint">Not installed</span></td>
-            <td>35.0.2</td>
-            <td><span class="badge err"><span class="dot err"></span>Missing</span></td>
-            <td><button class="btn small btn-primary">Install</button></td>
-          </tr>
-          <tr>
-            <td>scrcpy</td>
-            <td>4.0</td>
-            <td>4.0</td>
-            <td><span class="badge ok"><span class="dot ok"></span>Up to date</span></td>
-            <td><button class="btn small" disabled>Update</button></td>
-          </tr>
-          <tr>
-            <td>bundletool</td>
-            <td>1.18.3</td>
-            <td>1.18.5</td>
-            <td><span class="badge warn"><span class="dot warn"></span>Update available</span></td>
-            <td><button class="btn small">Update</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="card-f">
-      <button class="btn small">Check for updates</button>
-    </div>
-  </section>
-
-  <section class="card">
-    ${sectionH('General')}
-    <div class="card-b">
-      <div class="meta-row">
-        <span class="lbl">Theme</span>
-        <select class="select theme-select" style="max-width:260px">
-          <option value="auto">Auto (follow system)</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </div>
-      <div class="meta-row">
-        <span class="lbl">Screenshots folder</span>
-        <div class="row" style="gap:6px"><input class="input" value="/home/ashadrin/.config/adb_helper/screenshots" style="flex:1"><button class="btn">Browse…</button></div>
-      </div>
-      <div class="meta-row">
-        <span class="lbl">Logcat folder</span>
-        <div class="row" style="gap:6px"><input class="input" value="/home/ashadrin/.config/adb_helper/logcat" style="flex:1"><button class="btn">Browse…</button></div>
-      </div>
-      <div class="meta-row">
-        <span class="lbl">ADB command timeout</span>
-        <div class="row" style="gap:6px"><input class="input num" value="30"><span class="hint">seconds</span></div>
-      </div>
-      <div class="meta-row">
-        <span class="lbl">Log level</span>
-        <select class="select" style="max-width:260px"><option>Debug</option><option>Info</option><option>Warning</option><option selected>Error</option></select>
-      </div>
-    </div>
-  </section>
+    </section>
+  </div>
 `,
 
 };
@@ -1552,17 +1643,47 @@ settings: () => `
 /* =================== Theme =================== */
 function applyTheme(mode) {
   const w = document.getElementById('window');
-  const isAuto = mode === 'auto';
-  const resolved = isAuto
+  const resolved = mode === 'auto'
     ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
     : mode;
   w.setAttribute('data-theme', resolved);
   localStorage.setItem('adbh-theme', mode);
+  // sync theme buttons if settings page is open
+  document.querySelectorAll('.theme-btn').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.themeSet === mode));
+  });
 }
 applyTheme(localStorage.getItem('adbh-theme') || 'dark');
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
   if ((localStorage.getItem('adbh-theme') || 'dark') === 'auto') applyTheme('auto');
 });
+
+function initSortableTables(container) {
+  container.querySelectorAll('table').forEach(table => {
+    const ths = [...table.querySelectorAll('th.sortable')];
+    if (!ths.length) return;
+    let sortCol = -1, sortAsc = true;
+    ths.forEach(th => {
+      th.addEventListener('click', () => {
+        const idx = th.cellIndex;
+        if (sortCol === idx) { sortAsc = !sortAsc; }
+        else { sortCol = idx; sortAsc = true; }
+        ths.forEach(h => h.removeAttribute('aria-sort'));
+        th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
+        const tbody = table.querySelector('tbody');
+        const rows = [...tbody.querySelectorAll('tr')];
+        rows.sort((a, b) => {
+          const av = a.cells[idx]?.textContent.trim() || '';
+          const bv = b.cells[idx]?.textContent.trim() || '';
+          const an = parseFloat(av), bn = parseFloat(bv);
+          const cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv, undefined, {sensitivity:'base'});
+          return sortAsc ? cmp : -cmp;
+        });
+        rows.forEach(r => tbody.appendChild(r));
+      });
+    });
+  });
+}
 
 renderNav();
 showPage('connections');

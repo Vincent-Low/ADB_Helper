@@ -150,21 +150,30 @@ async function deleteMacro(id: number) {
     <section class="card flex flex-col min-h-0">
       <div class="card-h">
         <div class="label">Output</div>
-        <div class="right"><span class="hint">UTF-8</span></div>
+        <div class="right"><span class="hint">UTF-8 · 80 cols</span></div>
       </div>
       <div class="card-b flex-1 flex flex-col gap-2.5 min-h-0">
+        <div v-if="status" class="term-status">
+          <span class="pfx">$</span>
+          <span>{{ status }}</span>
+        </div>
         <div
-          v-if="status"
-          class="rounded-md bg-card-2 border border-border px-3 py-2 font-mono text-sm text-text2"
-        >{{ status }}</div>
-        <div ref="termEl" class="flex-1 rounded-md overflow-hidden border border-border" style="background:#0a0e15"></div>
+          ref="termEl"
+          class="flex-1 rounded-md overflow-hidden border border-border"
+          style="background:#0a0e15"
+        ></div>
       </div>
     </section>
 
     <section class="card flex flex-col min-h-0">
       <div class="card-h"><div class="label">Macros</div></div>
       <div class="card-b flex flex-col gap-2.5 min-h-0 flex-1">
-        <div v-if="!macros.length" class="hint">No macros saved.</div>
+        <div v-if="!macros.length" class="flex flex-col gap-1.5">
+          <div class="hint">No macros saved.</div>
+          <div class="hint" style="color:var(--text-3); font-size:var(--fs-xs)">
+            Recorded commands will appear here. Click ▶ to replay them in the terminal.
+          </div>
+        </div>
         <ul v-else class="flex flex-col gap-1">
           <li v-for="m in macros" :key="m.id" class="flex items-center gap-1.5">
             <span class="flex-1 text-sm truncate">{{ m.name }} <span class="hint">({{ m.commands.length }})</span></span>

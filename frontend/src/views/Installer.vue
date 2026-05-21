@@ -26,6 +26,7 @@ const running = ref(false);
 const dragging = ref(false);
 const idleStatus = "Idle — add files and select a target device to begin.";
 const status = ref(idleStatus);
+const statusState = ref<"idle" | "running" | "done" | "error">("idle");
 
 function pairKey(file: string, serial: string) {
   return `${file}|${serial}`;
@@ -74,9 +75,25 @@ onMounted(() => {
   });
   on(bridge.installer.queueDrained, () => {
     running.value = false;
-    status.value = "Done.";
+    finalizeStatus();
   });
 });
+
+function finalizeStatus() {
+  const all = [...jobs.value.values()];
+  const failed = all.filter((x) => x.status === "fail").length;
+  const ok = all.filter((x) => x.status === "ok").length;
+  if (failed && !ok) {
+    statusState.value = "error";
+    status.value = "Install failed — see Results";
+  } else if (failed) {
+    statusState.value = "error";
+    status.value = `Installed ${ok} of ${all.length} · ${failed} error(s)`;
+  } else {
+    statusState.value = "done";
+    status.value = `Installed ${ok} of ${all.length} · 0 errors`;
+  }
+}
 
 function maybeDone() {
   const pending = [...jobs.value.values()].some(
@@ -84,7 +101,13 @@ function maybeDone() {
   );
   if (!pending) {
     running.value = false;
-    status.value = "Done.";
+    finalizeStatus();
+  } else {
+    const running_ = [...jobs.value.values()].find((x) => x.status === "running");
+    const done = [...jobs.value.values()].filter((x) => x.status === "ok" || x.status === "fail").length;
+    if (running_) {
+      status.value = `Installing ${done + 1} of ${jobs.value.size} — ${fileName(running_.file)} on ${running_.serial}…`;
+    }
   }
 }
 
@@ -122,6 +145,7 @@ function toggleTarget(serial: string, checked: boolean) {
 
 function refreshStatus() {
   if (running.value) return;
+  statusState.value = "idle";
   if (!files.value.length || !targetCount.value) {
     status.value = idleStatus;
   } else {
@@ -129,10 +153,17 @@ function refreshStatus() {
   }
 }
 
+const progressPct = computed(() => {
+  if (!jobs.value.size) return 0;
+  const done = [...jobs.value.values()].filter((x) => x.status === "ok" || x.status === "fail").length;
+  return Math.round((done / jobs.value.size) * 100);
+});
+
 async function install() {
   if (!files.value.length || !targetCount.value) return;
   running.value = true;
-  status.value = "Installing…";
+  statusState.value = "running";
+  status.value = "Starting installation…";
   // Seed all rows as "queued"; cmd_ids arrive via installStarted as the
   // sequential dispatcher drains the queue per device.
   const next = new Map<string, JobRow>();
@@ -176,12 +207,17 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
     </div>
     <div class="card-b" style="padding:0">
       <table class="table">
-        <thead><tr><th>File</th><th class="w-20">Type</th><th class="text-right">Size</th><th class="col-actions"></th></tr></thead>
+        <thead><tr>
+          <th>File</th>
+          <th class="col-type">Type</th>
+          <th class="col-num">Size</th>
+          <th class="col-actions"></th>
+        </tr></thead>
         <tbody>
           <tr v-for="p in files" :key="p">
             <td class="num">{{ fileName(p) }}</td>
-            <td>{{ p.split('.').pop() }}</td>
-            <td class="text-right num">—</td>
+            <td>{{ (p.split('.').pop() || '').toUpperCase() }}</td>
+            <td class="col-num">—</td>
             <td><button class="btn small btn-danger" @click="removeFile(p)">Remove</button></td>
           </tr>
           <tr v-if="!files.length">
@@ -207,9 +243,15 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
     </div>
     <div class="card-b" style="padding:0">
       <table class="table">
-        <thead><tr><th class="col-check"></th><th>Device</th><th>Serial</th><th class="w-24">Status</th></tr></thead>
+        <thead><tr>
+          <th class="col-check"></th>
+          <th>Device</th>
+          <th>Serial</th>
+          <th class="col-status">Status</th>
+        </tr></thead>
         <tbody>
-          <tr v-for="d in devices.devices" :key="d.serial">
+          <tr v-for="d in devices.devices" :key="d.serial"
+              :class="selected.has(d.serial) ? 'selected' : ''">
             <td>
               <input
                 type="checkbox" class="check"
@@ -219,7 +261,11 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
             </td>
             <td>{{ d.model || "—" }} <span class="hint">· {{ d.manufacturer || "" }}</span></td>
             <td class="num">{{ d.serial }}</td>
-            <td><span class="badge" :class="d.status === 'online' ? 'ok' : 'err'">{{ d.status }}</span></td>
+            <td>
+              <span class="badge" :class="d.status === 'online' ? 'ok' : 'err'">
+                <span class="dot" :class="d.status === 'online' ? 'ok' : 'err'"></span>{{ d.status }}
+              </span>
+            </td>
           </tr>
           <tr v-if="!devices.devices.length">
             <td colspan="4"><div class="empty">No connected devices.</div></td>
@@ -232,12 +278,17 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
   <section class="card mt-4">
     <div class="card-h"><div class="label">Installation</div></div>
     <div class="card-b flex flex-col gap-2.5">
-      <div class="flex items-center gap-2">
+      <div class="row">
         <button class="btn btn-primary" :disabled="running || !files.length || !targetCount" @click="install">Install</button>
         <button class="btn" :disabled="!running">Cancel</button>
+        <div class="progress" style="margin:0 12px">
+          <i :style="{ width: progressPct + '%' }"></i>
+        </div>
+        <span class="num" style="color:var(--text-2); min-width:40px; text-align:right">{{ progressPct }}%</span>
       </div>
-      <div class="rounded-md bg-card-2 border border-border px-3 py-2 text-sm text-text2 font-mono">
-        {{ status }}
+      <div class="install-status" :class="`is-${statusState}`">
+        <span class="dot"></span>
+        <span class="status-text">{{ status }}</span>
       </div>
     </div>
   </section>
@@ -249,15 +300,28 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
     </div>
     <div class="card-b" style="padding:0">
       <table class="table">
-        <thead><tr><th>File</th><th>Serial</th><th>Status</th><th>Message</th></tr></thead>
+        <thead><tr>
+          <th>File</th>
+          <th>Serial</th>
+          <th>Result</th>
+          <th>Message</th>
+        </tr></thead>
         <tbody>
           <tr v-for="[cid, j] in jobs" :key="cid">
             <td class="num">{{ fileName(j.file) }}</td>
             <td class="num">{{ j.serial }}</td>
-            <td><span class="badge" :class="badgeClass(j.status)">{{ statusLabel(j.status) }}</span></td>
+            <td>
+              <span class="badge" :class="badgeClass(j.status)">
+                <span class="dot" :class="badgeClass(j.status)"></span>{{ statusLabel(j.status) }}
+              </span>
+            </td>
             <td class="hint truncate" style="max-width:300px">{{ j.message || "" }}</td>
           </tr>
-          <tr v-if="!jobs.size"><td colspan="4"><div class="empty">No installations yet.</div></td></tr>
+          <tr v-if="!jobs.size">
+            <td colspan="4">
+              <div class="empty" style="min-height:132px">No installations yet.</div>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>

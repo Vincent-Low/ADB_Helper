@@ -79,18 +79,17 @@ function fmtSize(mb: number) {
   </div>
 
   <section class="card">
-    <div class="card-b grid gap-6 items-center" style="grid-template-columns: 1fr 1fr auto">
-      <div class="flex flex-col gap-1.5">
-        <div class="text-xs uppercase text-text2 font-semibold tracking-wider">RAM</div>
+    <div class="card-b grid gap-6 items-center" style="grid-template-columns: 1fr 1fr">
+      <div class="stat">
+        <div class="lbl">RAM</div>
         <div class="progress"><i :style="{ width: ramPct + '%' }"></i></div>
-        <div class="num text-text2">Used {{ fmtSize(ram.used) }} / {{ fmtSize(ram.total) }}</div>
+        <div class="val">Used {{ fmtSize(ram.used) }} / {{ fmtSize(ram.total) }}</div>
       </div>
-      <div class="flex flex-col gap-1.5">
-        <div class="text-xs uppercase text-text2 font-semibold tracking-wider">Storage</div>
+      <div class="stat">
+        <div class="lbl">Storage</div>
         <div class="progress"><i :style="{ width: storagePct + '%' }"></i></div>
-        <div class="num text-text2">Used {{ fmtSize(storage.used) }} / {{ fmtSize(storage.total) }}</div>
+        <div class="val">Used {{ fmtSize(storage.used) }} / {{ fmtSize(storage.total) }}</div>
       </div>
-      <button class="btn" :disabled="!devices.active" @click="refresh">↻ Refresh</button>
     </div>
   </section>
 
@@ -100,19 +99,23 @@ function fmtSize(mb: number) {
         <div class="label">Packages</div>
         <div class="right"><span class="hint">{{ filtered.length }} apps</span></div>
       </div>
-      <div class="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-border bg-card-2">
+      <div class="toolbar-row">
         <input class="input flex-1" placeholder="Search by package…" v-model="search" />
-        <label class="inline-flex items-center gap-2 text-sm text-text2"><input type="checkbox" class="check" v-model="showSystem" /> System</label>
-        <label class="inline-flex items-center gap-2 text-sm text-text2"><input type="checkbox" class="check" v-model="showDisabled" /> Disabled</label>
+        <label class="switch-label"><input type="checkbox" class="check" v-model="showSystem" /> Show system apps</label>
+        <label class="switch-label"><input type="checkbox" class="check" v-model="showDisabled" /> Show disabled apps</label>
       </div>
       <div class="flex-1 overflow-auto">
         <table class="table">
-          <thead><tr><th>Package</th><th class="w-24">Status</th><th class="w-20">Type</th></tr></thead>
+          <thead><tr>
+            <th class="sortable">Package name</th>
+            <th class="col-status sortable">Status</th>
+            <th class="col-type sortable">Type</th>
+          </tr></thead>
           <tbody>
             <tr v-for="a in filtered" :key="a.package"
                 :class="selectedPkg === a.package ? 'selected' : ''"
                 class="cursor-pointer" @click="selectedPkg = a.package">
-              <td><span class="font-mono text-sm">{{ a.package }}</span></td>
+              <td><span class="font-mono">{{ a.package }}</span></td>
               <td>
                 <span class="badge" :class="a.status === 'active' ? 'ok' : 'err'">
                   <span class="dot" :class="a.status === 'active' ? 'ok' : 'err'"></span>
@@ -126,19 +129,19 @@ function fmtSize(mb: number) {
         </table>
       </div>
       <div class="card-f">
-        <span class="hint">{{ apps.length }} apps loaded</span>
+        <span class="hint">{{ apps.length }} apps loaded · {{ filtered.length }} shown</span>
       </div>
     </section>
 
     <aside class="card flex flex-col min-h-0 overflow-hidden">
       <div class="card-h"><div class="label">App details</div></div>
-      <div v-if="selectedApp" class="card-b overflow-auto flex flex-col gap-3.5">
-        <div class="grid items-center gap-3" style="grid-template-columns: 50px 1fr">
+      <div v-if="selectedApp" class="card-b overflow-auto flex flex-col" style="padding:0">
+        <div class="grid items-center gap-3" style="grid-template-columns: 50px 1fr; padding: 14px; border-bottom: 1px solid var(--border)">
           <div class="app-ico">{{ selectedApp.package.slice(0, 2).toUpperCase() }}</div>
           <div>
             <div class="font-semibold text-md break-words">{{ selectedApp.name || selectedApp.package }}</div>
-            <div class="text-text2 text-sm font-mono">{{ selectedApp.package }}</div>
-            <div class="flex gap-1.5 mt-1.5">
+            <div class="text-text2 text-sm font-mono break-all">{{ selectedApp.package }}</div>
+            <div class="row" style="gap:6px; margin-top:6px">
               <span class="badge" :class="selectedApp.status === 'active' ? 'ok' : 'err'">
                 <span class="dot" :class="selectedApp.status === 'active' ? 'ok' : 'err'"></span>
                 {{ selectedApp.status }}
@@ -147,7 +150,13 @@ function fmtSize(mb: number) {
             </div>
           </div>
         </div>
-        <div class="font-mono text-xs text-text2 break-all">{{ selectedApp.apk_path }}</div>
+
+        <table class="detail-table">
+          <tbody>
+            <tr class="section-head"><td colspan="2">Storage</td></tr>
+            <tr><td>APK path</td><td>{{ selectedApp.apk_path || "—" }}</td></tr>
+          </tbody>
+        </table>
       </div>
       <div v-else class="card-b flex-1"><div class="empty">Select an app.</div></div>
       <div class="card-f">
@@ -156,7 +165,7 @@ function fmtSize(mb: number) {
           @click="toggleDisable(selectedApp)"
         >{{ selectedApp.status === 'disabled' ? 'Enable' : 'Disable' }}</button>
         <button v-if="selectedApp && selectedApp.type === 'user'"
-          class="btn btn-danger small ml-auto"
+          class="btn btn-danger small" style="margin-left:auto"
           @click="uninstall(selectedApp.package)"
         >Uninstall</button>
       </div>
