@@ -59,6 +59,13 @@ async function rotate() {
 }
 
 function clearHistory() { recent.value = []; }
+
+const rebootMenu = ref(false);
+function toggleRebootMenu() { rebootMenu.value = !rebootMenu.value; }
+function pickReboot(mode: "normal" | "bootloader" | "recovery") {
+  rebootMenu.value = false;
+  reboot(mode);
+}
 </script>
 
 <template>
@@ -75,9 +82,16 @@ function clearHistory() { recent.value = []; }
                 class="btn-tile" :disabled="!devices.active" @click="press(k)">
           <span class="glyph">{{ glyph }}</span>{{ label }}
         </button>
-        <button class="btn-tile" :disabled="!devices.active" @click="reboot('normal')">
-          <span class="glyph">↻</span>Reboot
-        </button>
+        <div class="relative" style="position:relative">
+          <button class="btn-tile w-full" :disabled="!devices.active" @click="toggleRebootMenu">
+            <span class="glyph">↻</span>Reboot
+          </button>
+          <div v-if="rebootMenu" class="reboot-menu">
+            <button class="reboot-item" @click="pickReboot('normal')">Normal</button>
+            <button class="reboot-item" @click="pickReboot('bootloader')">Bootloader</button>
+            <button class="reboot-item" @click="pickReboot('recovery')">Recovery</button>
+          </div>
+        </div>
         <button class="btn-tile" :disabled="!devices.active" @click="takeScreenshot">
           <span class="glyph">▣</span>Screenshot
         </button>

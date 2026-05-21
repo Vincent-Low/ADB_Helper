@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useBridge } from "@/plugins/qt-bridge";
 import { useSignal } from "@/plugins/use-signal";
 import { useDevicesStore } from "@/stores/devices";
+import {
+  sanitizeIPv4Partial,
+  sanitizePort,
+  isValidIPv4,
+  isValidPort,
+} from "@/composables/useInputFilters";
 
 const bridge = useBridge();
 const devices = useDevicesStore();
@@ -19,9 +25,16 @@ const connPort = ref("5555");
 const connecting = ref(false);
 const connMsg = ref("");
 
-// Map cmd_id → { kind, ip }.  Survives rapid double-clicks: a second pair
-// click no longer overwrites the first cmd_id, so both responses route to
-// the correct handler.
+const pairFormValid = computed(
+  () =>
+    isValidIPv4(pairIp.value) &&
+    isValidPort(pairPort.value) &&
+    pairPin.value.length === 6,
+);
+const connFormValid = computed(
+  () => isValidIPv4(connIp.value) && isValidPort(connPort.value),
+);
+
 type PendingKind = "pair" | "connect";
 interface PendingEntry { kind: PendingKind; ip: string }
 const pending = ref<Map<string, PendingEntry>>(new Map());
@@ -66,8 +79,8 @@ function pendingOf(kind: PendingKind): number {
 }
 
 async function doPair() {
-  if (!pairIp.value || !pairPort.value || pairPin.value.length !== 6) {
-    pairMsg.value = "IP, port, and 6-digit PIN required.";
+  if (!pairFormValid.value) {
+    pairMsg.value = "Valid IPv4, port (1-65535), and 6-digit PIN required.";
     return;
   }
   pairing.value = true;
@@ -78,8 +91,8 @@ async function doPair() {
   pending.value.set(cid, { kind: "pair", ip: pairIp.value });
 }
 async function doConnect() {
-  if (!connIp.value || !connPort.value) {
-    connMsg.value = "Enter IP and port.";
+  if (!connFormValid.value) {
+    connMsg.value = "Valid IPv4 and port (1-65535) required.";
     return;
   }
   connecting.value = true;
@@ -103,8 +116,40 @@ async function reconnect(ip: string, port: number | null) {
   if (!port) return;
   await bridge.connections.connect(ip, port);
 }
+async function savePortEdit(p: { ip: string; alias: string }, raw: string) {
+  const portStr = sanitizePort(raw);
+  if (!isValidPort(portStr)) return;
+  await bridge.connections.savePaired(p.ip, p.alias, Number(portStr));
+  await devices.reloadPaired();
+}
 async function selectRow(serial: string) {
   await devices.setActive(serial);
+}
+
+function onIpInput(target: "pair" | "conn", e: Event) {
+  const el = e.target as HTMLInputElement;
+  const sanitized = sanitizeIPv4Partial(el.value);
+  if (target === "pair") pairIp.value = sanitized;
+  else connIp.value = sanitized;
+  if (el.value !== sanitized) el.value = sanitized;
+}
+function onPortInput(target: "pair" | "conn", e: Event) {
+  const el = e.target as HTMLInputElement;
+  const sanitized = sanitizePort(el.value);
+  if (target === "pair") pairPort.value = sanitized;
+  else connPort.value = sanitized;
+  if (el.value !== sanitized) el.value = sanitized;
+}
+function onPinInput(e: Event) {
+  const el = e.target as HTMLInputElement;
+  const trimmed = el.value.slice(0, 6);
+  pairPin.value = trimmed;
+  if (el.value !== trimmed) el.value = trimmed;
+}
+function onPairedPortInput(e: Event) {
+  const el = e.target as HTMLInputElement;
+  const sanitized = sanitizePort(el.value);
+  if (el.value !== sanitized) el.value = sanitized;
 }
 </script>
 
@@ -113,7 +158,8 @@ async function selectRow(serial: string) {
     <h1 class="page-title">Connections</h1>
     <span class="page-sub">Connect over Wi-Fi or pair a new Android 11+ device</span>
     <div class="page-actions">
-      <button class="btn" @click="refresh">Refresh</button>
+      <button class="btn" disabled title="Not implemented yet">Scan network</button>
+      <button class="btn btn-primary" @click="refresh">Refresh</button>
     </div>
   </div>
 
@@ -124,20 +170,28 @@ async function selectRow(serial: string) {
       <div class="card-b">
         <div class="field">
           <label>IP Address</label>
-          <input v-model="pairIp" class="input" placeholder="192.168.1.10" />
+          <input
+            :value="pairIp" class="input" placeholder="192.168.1.10"
+            maxlength="15" inputmode="decimal" autocomplete="off"
+            @input="onIpInput('pair', $event)"
+          />
         </div>
         <div class="field">
           <label>Pairing Port</label>
           <div class="row" style="gap:10px">
-            <input v-model="pairPort" class="input num" placeholder="44331"
-                   maxlength="5" inputmode="numeric" pattern="[0-9]*"
-                   style="flex:0 0 130px" />
-            <label class="text-text2 text-sm" style="margin-left:6px">PIN</label>
-            <input v-model="pairPin" class="input pin" maxlength="6"
-                   placeholder="123456" inputmode="numeric"
-                   style="flex:0 0 130px" />
+            <input
+              :value="pairPort" class="input num" placeholder="44331"
+              maxlength="5" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+              style="flex:0 0 130px" @input="onPortInput('pair', $event)"
+            />
+            <label style="color:var(--text-2); font-size:var(--fs-sm); margin-left:6px">PIN</label>
+            <input
+              :value="pairPin" class="input pin" placeholder="123456"
+              maxlength="6" autocomplete="off"
+              style="flex:0 0 130px" @input="onPinInput"
+            />
             <button class="btn btn-primary" style="margin-left:auto"
-                    :disabled="pairing" @click="doPair">Pair</button>
+                    :disabled="pairing || !pairFormValid" @click="doPair">Pair</button>
           </div>
         </div>
         <p v-if="pairMsg" class="hint mt-2">{{ pairMsg }}</p>
@@ -150,14 +204,22 @@ async function selectRow(serial: string) {
       <div class="card-b">
         <div class="field">
           <label>IP Address</label>
-          <input v-model="connIp" class="input" placeholder="192.168.1.10" />
+          <input
+            :value="connIp" class="input" placeholder="192.168.1.10"
+            maxlength="15" inputmode="decimal" autocomplete="off"
+            @input="onIpInput('conn', $event)"
+          />
         </div>
         <div class="field">
           <label>Port</label>
           <div class="row" style="gap:10px">
-            <input v-model="connPort" class="input num" style="flex:0 0 130px" />
+            <input
+              :value="connPort" class="input num"
+              maxlength="5" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+              style="flex:0 0 130px" @input="onPortInput('conn', $event)"
+            />
             <button class="btn btn-primary" style="margin-left:auto"
-                    :disabled="connecting" @click="doConnect">Connect</button>
+                    :disabled="connecting || !connFormValid" @click="doConnect">Connect</button>
           </div>
         </div>
         <p v-if="connMsg" class="hint mt-2">{{ connMsg }}</p>
@@ -206,7 +268,7 @@ async function selectRow(serial: string) {
       </div>
       <div class="card-f">
         <span class="hint">
-          {{ devices.devices.length }} device(s){{ devices.active?.connection_type === 'wifi' ? ' · connected via Wi-Fi' : '' }}
+          {{ devices.devices.length }} device{{ devices.devices.length === 1 ? '' : 's' }}{{ devices.active?.connection_type === 'wifi' ? ' · connected via Wi-Fi' : '' }}
         </span>
         <button
           class="btn btn-danger" style="margin-left:auto"
@@ -235,8 +297,13 @@ async function selectRow(serial: string) {
               <td>{{ p.alias }}</td>
               <td class="num">{{ p.ip }}</td>
               <td>
-                <input class="input small num" :value="p.connect_port ?? ''"
-                       maxlength="5" inputmode="numeric" pattern="[0-9]*" />
+                <input
+                  class="input small num"
+                  :value="p.connect_port ?? ''"
+                  maxlength="5" inputmode="numeric" pattern="[0-9]*"
+                  @input="onPairedPortInput"
+                  @change="savePortEdit(p, ($event.target as HTMLInputElement).value)"
+                />
               </td>
               <td class="num">{{ p.last_connected ?? '—' }}</td>
               <td>

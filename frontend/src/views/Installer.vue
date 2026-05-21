@@ -18,6 +18,7 @@ interface JobRow {
 
 const files = ref<string[]>([]);
 const selected = ref<Set<string>>(new Set());
+const selectedFiles = ref<Set<string>>(new Set());
 // Sequential dispatcher: rows are seeded by `file|serial` BEFORE cmd_ids
 // are known.  installStarted fills in the cmd_id and flips to "running".
 const jobs = ref<Map<string, JobRow>>(new Map());
@@ -128,12 +129,37 @@ function cancelJobsForFile(path: string) {
 function removeFile(path: string) {
   cancelJobsForFile(path);
   files.value = files.value.filter((p) => p !== path);
+  selectedFiles.value.delete(path);
+  selectedFiles.value = new Set(selectedFiles.value);
   refreshStatus();
+}
+function removeSelectedFiles() {
+  const toRemove = [...selectedFiles.value];
+  for (const p of toRemove) {
+    cancelJobsForFile(p);
+  }
+  files.value = files.value.filter((p) => !selectedFiles.value.has(p));
+  selectedFiles.value = new Set();
+  refreshStatus();
+}
+function toggleFileSel(path: string, checked: boolean) {
+  const s = new Set(selectedFiles.value);
+  if (checked) s.add(path); else s.delete(path);
+  selectedFiles.value = s;
+}
+function toggleAllFiles(checked: boolean) {
+  selectedFiles.value = checked ? new Set(files.value) : new Set();
 }
 function clearFiles() {
   for (const p of files.value) cancelJobsForFile(p);
   files.value = [];
+  selectedFiles.value = new Set();
   refreshStatus();
+}
+async function cancelInstall() {
+  await bridge.installer.cancelAll();
+  running.value = false;
+  finalizeStatus();
 }
 
 function toggleTarget(serial: string, checked: boolean) {
@@ -203,25 +229,40 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
   >
     <div class="card-h">
       <div class="label">Files to install</div>
-      <div class="right"><span class="hint">{{ files.length }} files</span></div>
+      <div class="right"><span class="hint">{{ files.length }} file{{ files.length === 1 ? '' : 's' }}</span></div>
     </div>
     <div class="card-b" style="padding:0">
       <table class="table">
         <thead><tr>
+          <th class="col-check">
+            <input
+              type="checkbox" class="check"
+              :checked="files.length > 0 && selectedFiles.size === files.length"
+              :disabled="!files.length"
+              @change="toggleAllFiles(($event.target as HTMLInputElement).checked)"
+            />
+          </th>
           <th>File</th>
           <th class="col-type">Type</th>
           <th class="col-num">Size</th>
           <th class="col-actions"></th>
         </tr></thead>
         <tbody>
-          <tr v-for="p in files" :key="p">
+          <tr v-for="p in files" :key="p" :class="selectedFiles.has(p) ? 'selected' : ''">
+            <td>
+              <input
+                type="checkbox" class="check"
+                :checked="selectedFiles.has(p)"
+                @change="toggleFileSel(p, ($event.target as HTMLInputElement).checked)"
+              />
+            </td>
             <td class="num">{{ fileName(p) }}</td>
             <td>{{ (p.split('.').pop() || '').toUpperCase() }}</td>
             <td class="col-num">—</td>
             <td><button class="btn small btn-danger" @click="removeFile(p)">Remove</button></td>
           </tr>
           <tr v-if="!files.length">
-            <td colspan="4">
+            <td colspan="5">
               <div class="empty" style="min-height:96px">
                 Drop APK/AAB files here, or click "Add files…"
               </div>
@@ -232,6 +273,7 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
     </div>
     <div class="card-f">
       <button class="btn" @click="addFiles">Add files…</button>
+      <button class="btn btn-danger" :disabled="!selectedFiles.size" @click="removeSelectedFiles">Remove</button>
       <button class="btn" :disabled="!files.length" @click="clearFiles">Clear</button>
     </div>
   </section>
@@ -280,7 +322,7 @@ function fileName(p: string) { return p.split(/[\\/]/).pop() || p; }
     <div class="card-b flex flex-col gap-2.5">
       <div class="row">
         <button class="btn btn-primary" :disabled="running || !files.length || !targetCount" @click="install">Install</button>
-        <button class="btn" :disabled="!running">Cancel</button>
+        <button class="btn" :disabled="!running" @click="cancelInstall">Cancel</button>
         <div class="progress" style="margin:0 12px">
           <i :style="{ width: progressPct + '%' }"></i>
         </div>

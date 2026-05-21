@@ -92,10 +92,8 @@ async function launch() {
         <div class="field"><label>Orientation lock</label>
           <select v-model="orientation" class="select">
             <option value="">Auto</option>
-            <option value="0">0°</option>
-            <option value="90">90°</option>
-            <option value="180">180°</option>
-            <option value="270">270°</option>
+            <option value="0">Portrait</option>
+            <option value="90">Landscape</option>
           </select>
         </div>
         <div class="field">

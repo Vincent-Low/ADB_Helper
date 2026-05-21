@@ -57,6 +57,14 @@ async function checkForUpdates() {
   if (b.settings?.checkDependencies) await b.settings.checkDependencies();
   await reload();
 }
+async function openLogsFolder() {
+  const b: any = bridge;
+  if (b.settings?.openLogsFolder) await b.settings.openLogsFolder();
+}
+async function openAppFolder() {
+  const b: any = bridge;
+  if (b.settings?.openAppFolder) await b.settings.openAppFolder();
+}
 </script>
 
 <template>
@@ -95,33 +103,31 @@ async function checkForUpdates() {
         <div class="meta-row">
           <span class="lbl">ADB command timeout</span>
           <div class="row" style="gap:6px">
-            <input class="input num" style="max-width:64px"
-                   :value="settings.adb_timeout"
-                   @change="onAdbTimeoutChange(($event.target as HTMLInputElement).value)" />
+            <input
+              class="input num" style="max-width:64px"
+              :value="settings.adb_timeout"
+              maxlength="4" inputmode="numeric" pattern="[0-9]*"
+              @input="(($event.target as HTMLInputElement).value = ($event.target as HTMLInputElement).value.replace(/\D+/g, '').slice(0, 4))"
+              @change="onAdbTimeoutChange(($event.target as HTMLInputElement).value)" />
             <span class="hint">seconds</span>
           </div>
         </div>
         <div class="meta-row">
           <span class="lbl">Log level</span>
           <div class="row" style="gap:6px">
-            <select class="select" style="max-width:130px"
+            <select class="select" style="max-width:110px"
                     :value="settings.log_level" @change="setLogLevel">
               <option value="debug">Debug</option>
               <option value="info">Info</option>
               <option value="warning">Warning</option>
               <option value="error">Error</option>
             </select>
+            <button class="btn" disabled title="Not implemented yet" @click="openLogsFolder">Open logs folder</button>
           </div>
         </div>
       </div>
       <div class="card-f">
-        <div class="row" style="gap:10px; flex:1">
-          <div class="app-ico" style="width:40px; height:40px; border-radius:10px">A</div>
-          <div>
-            <div class="font-semibold">ADB_Helper</div>
-            <div class="hint">v{{ app.appVersion }} · Python 3.12 · PySide6 · Qt 6 · Vue 3</div>
-          </div>
-        </div>
+        <button class="btn" disabled title="Not implemented yet" @click="openAppFolder">Open app folder</button>
       </div>
     </section>
 
