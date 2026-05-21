@@ -1,13 +1,13 @@
-"""ThemeManager — load + apply QSS, follow system theme on Linux (Spec §2.2).
+"""ThemeManager — track system theme, expose effective theme to bridges.
 
-QSS lives in ``ui/qss/{light,dark}.qss``. Terminal palette is NEVER touched
-from QSS — see ``ui/terminal_palette.py``. System-theme follow on Linux is
-best-effort: ``darkdetect`` polled every 30 s via ``QTimer`` (Spec §6.2).
+Vue SPA owns all styling (Tailwind + CSS vars in ``frontend/src/style.css``).
+ThemeManager no longer loads QSS; it only resolves the effective theme so
+the AppBridge can push ``themeChanged`` to the Vue side. System-theme follow
+on Linux is best-effort via ``darkdetect`` polled every 30 s.
 """
 from __future__ import annotations
 
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -18,7 +18,6 @@ from ..core.platform import IS_LINUX
 
 _log = get_logger(__name__)
 
-_QSS_DIR = Path(__file__).resolve().parent / "qss"
 _POLL_MS = 30_000
 
 _tm_instance: Optional["ThemeManager"] = None
@@ -36,7 +35,7 @@ class Theme(str, Enum):
 
 
 class ThemeManager(QObject):
-    """Apply QSS to the QApplication; optionally track OS theme."""
+    """Resolve effective theme; emit ``theme_changed`` for the Vue bridge."""
 
     theme_changed = Signal(object)  # Theme enum
 
@@ -50,7 +49,6 @@ class ThemeManager(QObject):
         self._timer: Optional[QTimer] = None
 
     def apply(self, app: QApplication, theme: Theme) -> None:
-        """Apply theme to ``app``. Starts/stops the system-poll timer."""
         self._app = app
         self._theme = theme
         self._stop_polling()
@@ -59,7 +57,6 @@ class ThemeManager(QObject):
             self._start_polling()
         else:
             effective = theme
-        self._apply_qss(effective)
         if effective != self._effective:
             self._effective = effective
             self.theme_changed.emit(effective)
@@ -73,23 +70,6 @@ class ThemeManager(QObject):
         return self._effective
 
     # --- internals -------------------------------------------------------
-    def _apply_qss(self, effective: Theme) -> None:
-        if self._app is None:
-            return
-        qss_file = _QSS_DIR / f"{effective.value}.qss"
-        if not qss_file.exists():
-            # Vue SPA owns the UI; native QSS is optional (only affects
-            # QFileDialog / QMessageBox).  Don't spam errors at startup.
-            self._app.setStyleSheet("")
-            return
-        try:
-            qss = qss_file.read_text(encoding="utf-8")
-        except OSError as e:
-            _log.warning("ThemeManager: failed to load %s: %s", qss_file, e)
-            return
-        self._app.setStyleSheet(qss)
-        _log.info("ThemeManager: applied %s.qss", effective.value)
-
     def _detect_system_theme(self) -> Theme:
         try:
             import darkdetect
@@ -121,7 +101,6 @@ class ThemeManager(QObject):
         detected = self._detect_system_theme()
         if detected != self._effective:
             self._effective = detected
-            self._apply_qss(detected)
             self.theme_changed.emit(detected)
 
 
