@@ -1,15 +1,24 @@
-"""ADB_Helper entry point (Spec §1.7, §2.1, §8)."""
+"""ADB_Helper entry point (Spec §1.7, §2.1, §8).
+
+UI shell is a single QWebEngineView hosting a Vue 3 + Tailwind SPA; all
+Vue ↔ Python traffic flows through QWebChannel bridges in
+``adb_helper.web``.  Backend (``core/``) is unchanged.
+"""
 from __future__ import annotations
 
 import os
 import sys
-from typing import List
 
 _SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
 os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
+
+# QtWebEngine must be imported before QApplication is constructed so the
+# WebEngine platform plugin is registered.
+import PySide6.QtWebEngineCore  # noqa: F401  — side effect: registers plugin
+import PySide6.QtWebEngineWidgets  # noqa: F401
 
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QApplication
@@ -22,38 +31,12 @@ if hasattr(Qt, "AA_UseHighDpiPixmaps"):
 from adb_helper.core import strings
 from adb_helper.core.adb_service import get_adb_service, shutdown_adb_service
 from adb_helper.core.db_manager import DatabaseManager
-from adb_helper.core.imodule import ModuleDescriptor
 from adb_helper.core.logger import get_logger, init_logging
 from adb_helper.core.paths import ensure_app_dirs
-from adb_helper.core.registry import registry
 from adb_helper.core.settings_manager import SettingsManager
 from adb_helper.core.single_instance import SingleInstance
-from adb_helper.modules.apps import AppsModule
-from adb_helper.modules.connections import ConnectionsModule
-from adb_helper.modules.device_buttons import DeviceButtonsModule
-from adb_helper.modules.device_info import DeviceInfoModule
-from adb_helper.modules.installer import InstallerModule
-from adb_helper.modules.logcat import LogcatModule
-from adb_helper.modules.scrcpy import ScrcpyModule
-from adb_helper.modules.settings import SettingsModule
-from adb_helper.modules.terminal import TerminalModule
-from adb_helper.ui.main_window import MainWindow
 from adb_helper.ui.theme_manager import Theme, ThemeManager
-
-
-def _module_descriptors() -> List[ModuleDescriptor]:
-    """Sidebar order — Connections is default (Spec §3 module ordering)."""
-    return [
-        ModuleDescriptor("connections",    strings.LABEL_CONNECTIONS,    "connections",    ConnectionsModule),
-        ModuleDescriptor("terminal",       strings.LABEL_TERMINAL,       "terminal",       TerminalModule),
-        ModuleDescriptor("installer",      strings.LABEL_INSTALLER,      "installer",      InstallerModule),
-        ModuleDescriptor("scrcpy",         strings.LABEL_SCRCPY,         "scrcpy",         ScrcpyModule),
-        ModuleDescriptor("device_buttons", strings.LABEL_DEVICE_BUTTONS, "device_buttons", DeviceButtonsModule),
-        ModuleDescriptor("device_info",    strings.LABEL_DEVICE_INFO,    "device_info",    DeviceInfoModule),
-        ModuleDescriptor("apps",           strings.LABEL_APPS,           "apps",           AppsModule),
-        ModuleDescriptor("logcat",         strings.LABEL_LOGCAT,         "logcat",         LogcatModule),
-        ModuleDescriptor("settings",       strings.LABEL_SETTINGS,       "settings",       SettingsModule),
-    ]
+from adb_helper.web.web_main_window import WebMainWindow
 
 
 def main() -> int:
@@ -86,13 +69,7 @@ def main() -> int:
         theme = Theme.SYSTEM
     theme_mgr.apply(app, theme)
 
-    for desc in _module_descriptors():
-        try:
-            registry.register(desc)
-        except ValueError:
-            pass
-
-    window = MainWindow(registry, adb, settings, theme_mgr)
+    window = WebMainWindow(adb, settings, theme_mgr, db)
     single.focus_requested.connect(window.focus_window)
     window.show()
 

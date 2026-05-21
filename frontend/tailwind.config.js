@@ -1,0 +1,48 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{vue,ts,tsx,js}"],
+  theme: {
+    extend: {
+      colors: {
+        app: "var(--bg-app)",
+        content: "var(--bg-content)",
+        card: "var(--bg-card)",
+        "card-2": "var(--bg-card-2)",
+        elevated: "var(--bg-elevated)",
+        input: "var(--bg-input)",
+        hover: "var(--bg-hover)",
+        "row-alt": "var(--bg-row-alt)",
+        "row-selected": "var(--bg-row-selected)",
+        "row-hover": "var(--bg-row-hover)",
+        border: "var(--border)",
+        "border-strong": "var(--border-strong)",
+        "border-input": "var(--border-input)",
+        "border-focus": "var(--border-focus)",
+        text1: "var(--text-1)",
+        text2: "var(--text-2)",
+        text3: "var(--text-3)",
+        "text-disabled": "var(--text-disabled)",
+        accent: "var(--accent)",
+        "accent-strong": "var(--accent-strong)",
+        "accent-soft": "var(--accent-soft)",
+        "accent-fg": "var(--accent-fg)",
+        success: "var(--success)",
+        warning: "var(--warning)",
+        danger: "var(--danger)",
+      },
+      fontFamily: {
+        ui: ["var(--font-ui)"],
+        mono: ["var(--font-mono)"],
+      },
+      borderRadius: { sm: "4px", md: "6px", lg: "8px", xl: "10px" },
+      fontSize: {
+        xs: ["11px", "1.4"],
+        sm: ["12px", "1.45"],
+        md: ["13px", "1.45"],
+        lg: ["14px", "1.45"],
+        xl: ["16px", "1.4"],
+      },
+    },
+  },
+  plugins: [],
+};

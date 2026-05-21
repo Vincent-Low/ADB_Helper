@@ -77,10 +77,15 @@ class ThemeManager(QObject):
         if self._app is None:
             return
         qss_file = _QSS_DIR / f"{effective.value}.qss"
+        if not qss_file.exists():
+            # Vue SPA owns the UI; native QSS is optional (only affects
+            # QFileDialog / QMessageBox).  Don't spam errors at startup.
+            self._app.setStyleSheet("")
+            return
         try:
             qss = qss_file.read_text(encoding="utf-8")
         except OSError as e:
-            _log.error("ThemeManager: failed to load %s: %s", qss_file, e)
+            _log.warning("ThemeManager: failed to load %s: %s", qss_file, e)
             return
         self._app.setStyleSheet(qss)
         _log.info("ThemeManager: applied %s.qss", effective.value)

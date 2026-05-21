@@ -1,6 +1,15 @@
 # ADB_Helper
 
-**v1.0.0** — Desktop GUI for managing Android devices over ADB. Connects, inspects, installs APKs, mirrors screens via scrcpy, exports logcat, and manages apps — all from a single PySide6 window. Designed for daily personal use on Windows 11 and Ubuntu 22.04+. macOS is not supported.
+**v1.0.0** — Desktop GUI for managing Android devices over ADB. Connects, inspects, installs APKs, mirrors screens via scrcpy, exports logcat, and manages apps. UI is a Vue 3 + Tailwind SPA hosted inside a single `QWebEngineView`; all Vue ↔ Python traffic flows through `QWebChannel`. Backend (`src/adb_helper/core/`) is pure Python — no Qt widgets in module logic. Designed for daily personal use on Windows 11 and Ubuntu 22.04+. macOS is not supported.
+
+## Architecture at a glance
+
+```
+PySide6 QMainWindow
+  └── QWebEngineView  ← QWebChannel ──→  Vue 3 SPA (frontend/)
+       host-side bridges live in src/adb_helper/web/bridge/*
+       backend services unchanged in src/adb_helper/core/
+```
 
 ---
 
@@ -34,8 +43,25 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 
 pip install -e .
+
+# Build the Vue frontend (required — Python loads it from frontend_dist/).
+cd frontend && npm ci && npm run build && cd ..
+
 adb-helper
 ```
+
+### Dev mode (HMR)
+
+Set `ADBH_DEV=1` and the Python host will spawn Vite as a child process
+and load `http://127.0.0.1:5173/` once it's ready.
+
+```bash
+ADBH_DEV=1 python main.py
+# OR override the dev URL if Vite runs elsewhere:
+ADBH_DEV=1 ADBH_DEV_URL=http://127.0.0.1:5174/ python main.py
+```
+
+Frontend stack: Vue 3 + Vite 6 + Pinia + Tailwind 3 + TypeScript + xterm.js.
 
 ---
 
@@ -44,6 +70,10 @@ adb-helper
 ```bash
 source .venv/bin/activate
 pip install -e ".[build]"
+
+# Vue bundle is bundled INSIDE the Python binary — build it first.
+cd frontend && npm ci && npm run build && cd ..
+
 pyinstaller adb_helper.spec
 # Output: dist/adb_helper/
 ```
@@ -82,9 +112,21 @@ Root-required operations, GUI-action macro recording, streaming/live logcat, fil
 
 ---
 
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Pure-function unit tests live in `tests/`. No Qt event loop is started by
+default (`QT_QPA_PLATFORM=offscreen` is set in `tests/conftest.py`); the
+installer-queue suite spins up a minimal `QCoreApplication`.
+
+---
+
 ## Documents
 
 - `ADB_Helper_Technical_Specification.md` — full functional/technical spec (normative).
 - `CLAUDE.md` — architecture invariants and contribution rules.
-- `adb-helper_handoff_Claude_Design/` — HTML/CSS/JS design prototype (visual reference only).
-- `src/adb_helper/ui/DESIGN_TOKENS.md` — extracted design tokens for QSS generation.
+- `design.html` — visual reference (dark/light tokens, layout intent).
+- `frontend/src/style.css` — design tokens applied to Tailwind.

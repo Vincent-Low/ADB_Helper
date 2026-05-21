@@ -38,7 +38,9 @@ adb-helper = "adb_helper.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"adb_helper" = ["ui/qss/*.qss", "ui/qss/fonts/**/*", "ui/*.md"]
+# Vue UI lives outside the Python package — copied into PyInstaller bundle
+# via adb_helper.spec.  No QSS shipped any more (Vue owns styling).
+"adb_helper" = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
